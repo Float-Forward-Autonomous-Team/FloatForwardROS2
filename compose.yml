@@ -1,0 +1,17 @@
+services:
+  ros:
+    build: .
+    image: float_forward-ros:jazzy
+    volumes:
+      - .:/ws/src/boat          # BIND: this repo, edit on the host, live in the container
+      - ros-build:/ws/build     # NAMED: colcon scratch, survives `compose down`
+      - ros-install:/ws/install # NAMED: the overlay ROS actually loads
+      - ros-log:/ws/log         # NAMED: build/test logs
+    working_dir: /ws
+    stdin_open: true
+    tty: true
+
+volumes:
+  ros-build:
+  ros-install:
+  ros-log:

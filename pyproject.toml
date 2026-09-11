@@ -1,0 +1,7 @@
+[tool.ruff]
+line-length = 99
+
+[tool.ruff.lint]
+# E/F/W = flake8-equivalent rules, D = pydocstyle -> matches ROS's own
+# ament_flake8 / ament_pep257 conventions without needing those tools.
+select = ["E", "F", "W", "D"]
