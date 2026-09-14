@@ -10,6 +10,9 @@ services:
     working_dir: /ws
     stdin_open: true
     tty: true
+    shm_size: "512mb"           # Gazebo's Ogre2 renderer + Xvfb need more than Docker's 64MB default /dev/shm
+    ports:
+      - "127.0.0.1:6080:6080"   # noVNC web UI — loopback-only: the VNC server has no password
 
 volumes:
   ros-build:
