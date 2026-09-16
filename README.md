@@ -60,6 +60,40 @@ make sim       # starts the container; prints the noVNC URL
 4. In a second `make sh` shell: `ros2 topic echo /clock` (incrementing sim
    time) and `ros2 topic list` (includes `/clock`) confirm the bridge.
 
+### VRX (boat simulation)
+
+The `sim.launch.py` demo above only proves the ROS↔Gazebo bridge works — it has no
+boat. [VRX](https://github.com/osrf/vrx) is OSRF's Virtual RobotX simulator: it
+adds a WAM-V catamaran model (thrusters, buoyancy/wave physics, a sensor suite) and
+a set of ready-made task worlds. It's vendored as source under `vrx/` (cloned at
+image build, pinned to `v3.1.2`) and builds alongside `boat` via the normal colcon
+step.
+
+**Run it:**
+
+```bash
+make build     # clones vrx into the image — only needed once, or after editing Dockerfile
+make colcon    # builds vrx_gz / vrx_ros / vrx_urdf alongside boat
+make vrx       # starts the container, launches a VRX world; prints the noVNC URL
+```
+
+Open `http://localhost:6080/vnc.html?resize=scale` the same way as above — the
+WAM-V should appear on water instead of a box/sphere/cylinder on a plane.
+
+Pick the world with `WORLD=<name>` (default: `stationkeeping_task`, a single light
+task world — good for day-to-day dev):
+
+```bash
+make vrx WORLD=wayfinding_task
+```
+
+Other task worlds: `navigation_task`, `follow_path_task`, `scan_dock_deliver_task`,
+`perception_task`, `acoustic_perception_task`, `acoustic_tracking_task`,
+`gymkhana_task`, `wildlife_task`. There's also `sydney_regatta`, the full 2023
+RobotX competition venue — it downloads large models from Gazebo Fuel on first
+launch and is noticeably heavier under this container's software (CPU) rendering,
+so prefer a task world unless you specifically need the full venue.
+
 ## Repo layout
 
 ```
@@ -71,6 +105,7 @@ float_forward/
 ├── pyproject.toml
 ├── .pre-commit-config.yaml
 ├── .github/workflows/ci.yml
+├── vrx/                        vendored VRX source (WAM-V + task worlds), cloned at image build — see Dockerfile
 └── boat/                      ROS 2 package (ament_python)
     ├── package.xml            dependencies + build type
     ├── setup.py  setup.cfg    entry points, data files

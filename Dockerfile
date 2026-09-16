@@ -35,6 +35,26 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # carries over when the named volumes in compose.yml mount here empty
 RUN mkdir -p /ws/src /ws/build /ws/install /ws/log && chown -R ubuntu:ubuntu /ws
 
+# `rosdep install` (run as ubuntu, e.g. via `make colcon`) shells out to
+# `sudo apt-get install` for any system package it needs to resolve a
+# dependency — passwordless sudo lets that work non-interactively inside
+# the container (dev-only image, not internet-facing).
+RUN echo "ubuntu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu \
+ && chmod 0440 /etc/sudoers.d/ubuntu
+
+# VRX: the WAM-V boat model + task worlds for Gazebo Harmonic/ROS 2 Jazzy.
+# Vendored as source (not on apt) so `make colcon`'s rosdep+colcon step
+# picks it up like any other package under /ws/src. Retried a few times:
+# Docker Desktop's build-VM networking is prone to transient DNS/TLS
+# failures on a clone this size.
+RUN for i in 1 2 3 4 5; do \
+      rm -rf /ws/src/vrx; \
+      git clone --branch v3.1.2 --depth 1 https://github.com/osrf/vrx.git /ws/src/vrx && break; \
+      echo "vrx clone attempt $i failed, retrying..."; sleep 5; \
+    done \
+ && test -d /ws/src/vrx/.git \
+ && chown -R ubuntu:ubuntu /ws/src/vrx
+
 # the base image already ships rosdep's source list; only the per-user
 # cache is missing, and `rosdep install` needs it before it can resolve
 # any dependencies.
