@@ -15,7 +15,7 @@ needs ROS installed on their own machine, just Docker and `make`.
 ## Quick start
 
 ```bash
-git clone <this repo>
+git clone https://github.com/Float-Forward-Autonomous-Team/FloatForwardROS2.git
 cd float_forward
 
 make build     # build the docker image (first time, or after editing Dockerfile)
