@@ -37,34 +37,12 @@ You should see `alive 0`, `alive 1`, … printed once a second.
 use. It's a separate program from ROS 2, with its own pub/sub transport
 (Gazebo Transport) and its own message types (`gz.msgs.*`). `ros_gz` is the
 glue package family (`ros_gz_sim`, `ros_gz_bridge`, …) that lets Gazebo and
-ROS 2 talk to each other. For ROS 2 Jazzy, Gazebo Harmonic + the bridge
-install as a single apt package, `ros-jazzy-ros-gz` — already baked into
-this repo's Docker image, nothing extra to install yourself.
+ROS 2 talk to each other.
 
 Since not everyone on the team is on the same OS (and there's no GPU
 passthrough into Docker anyway), Gazebo's GUI runs *inside* the container
 against a virtual display and streams to your browser over
 [noVNC](https://novnc.com/) — no host setup beyond Docker and a browser.
-
-**Core concepts** (if you're new to Gazebo):
-
-- **World** — an SDF file describing the environment: ground plane,
-  lighting, physics settings, and what's placed in it. No boat model exists
-  yet, so we launch Gazebo's own stock `shapes.sdf` demo world (a box,
-  sphere, and cylinder) just to prove the pipeline works end to end.
-- **Model / entity** — a robot, obstacle, or object placed in a world, made
-  of links/joints/collision/visual geometry. The boat will eventually be
-  one of these (a URDF/SDF/xacro file that doesn't exist in this repo yet).
-- **Plugin** — a shared library Gazebo loads (globally, or attached to a
-  model/sensor) that adds behavior — e.g. applying thruster forces or
-  simulating a GPS sensor — usually by publishing simulated state as
-  Gazebo Transport topics.
-- **The `ros_gz_bridge`** — a node (`parameter_bridge`) that maps one
-  Gazebo topic+type to one ROS 2 topic+type, one line of config per topic.
-  `boat/launch/sim.launch.py` bridges `/clock` as the minimal example.
-- **Topics** — once bridged, `ros2 topic echo /clock` / `ros2 topic list`
-  behave exactly like any other ROS topic, even though the data originates
-  inside Gazebo.
 
 **Run it:**
 
@@ -73,7 +51,7 @@ make build     # only needed once, or after editing Dockerfile
 make sim       # starts the container; prints the noVNC URL
 ```
 
-1. Open `http://localhost:6080/vnc.html` in a browser and click **Connect**
+1. Open `http://localhost:6080/vnc.html?resize=scale` in a browser and click **Connect**
    (no password). You should see a plain desktop within a few seconds — if
    it's blank, reload once (the display server can take a moment to start).
 2. `make sh` — open a shell in the container.
@@ -81,20 +59,6 @@ make sim       # starts the container; prints the noVNC URL
    noVNC tab showing a box, sphere, and cylinder on a ground plane.
 4. In a second `make sh` shell: `ros2 topic echo /clock` (incrementing sim
    time) and `ros2 topic list` (includes `/clock`) confirm the bridge.
-
-**Gotchas:**
-
-- Rendering is software-only (no GPU passthrough), so it's slower than
-  native — especially on Apple Silicon.
-- The noVNC port is published as loopback-only (`127.0.0.1:6080`) because
-  the VNC server has no password. Don't widen that binding to share it
-  over a network.
-- `shapes.sdf` uses built-in geometry, so it needs no network access. A
-  future real boat model that references [Fuel](https://app.gazebosim.org/)
-  assets will need internet access on first launch (cached after that).
-- Added `ros_gz_sim`/`ros_gz_bridge` as `package.xml` dependencies — like
-  any dependency change, `make colcon` (which runs `rosdep install`) picks
-  them up automatically.
 
 ## Repo layout
 
