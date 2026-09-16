@@ -31,11 +31,41 @@ ros2 run boat heartbeat          # or: ros2 launch boat boat.launch.py
 
 You should see `alive 0`, `alive 1`, … printed once a second.
 
+## Simulation (Gazebo)
+
+[Gazebo Harmonic](https://gazebosim.org/) is the physics/sensor simulator we
+use. It's a separate program from ROS 2, with its own pub/sub transport
+(Gazebo Transport) and its own message types (`gz.msgs.*`). `ros_gz` is the
+glue package family (`ros_gz_sim`, `ros_gz_bridge`, …) that lets Gazebo and
+ROS 2 talk to each other.
+
+Since not everyone on the team is on the same OS (and there's no GPU
+passthrough into Docker anyway), Gazebo's GUI runs *inside* the container
+against a virtual display and streams to your browser over
+[noVNC](https://novnc.com/) — no host setup beyond Docker and a browser.
+
+**Run it:**
+
+```bash
+make build     # only needed once, or after editing Dockerfile
+make sim       # starts the container; prints the noVNC URL
+```
+
+1. Open `http://localhost:6080/vnc.html?resize=scale` in a browser and click **Connect**
+   (no password). You should see a plain desktop within a few seconds — if
+   it's blank, reload once (the display server can take a moment to start).
+2. `make sh` — open a shell in the container.
+3. `ros2 launch boat sim.launch.py` — Gazebo's GUI should appear in the
+   noVNC tab showing a box, sphere, and cylinder on a ground plane.
+4. In a second `make sh` shell: `ros2 topic echo /clock` (incrementing sim
+   time) and `ros2 topic list` (includes `/clock`) confirm the bridge.
+
 ## Repo layout
 
 ```
 float_forward/
-├── Dockerfile                 the environment: ROS 2 Jazzy + colcon + rosdep
+├── Dockerfile                 the environment: ROS 2 Jazzy + colcon + rosdep + Gazebo + noVNC
+├── docker/                    supervisord.conf + entrypoint.sh for the in-container GUI stack
 ├── compose.yml
 ├── Makefile
 ├── pyproject.toml
@@ -49,6 +79,7 @@ float_forward/
     │   ├── __init__.py
     │   └── heartbeat.py       example node -> `ros2 run boat heartbeat`
     ├── launch/boat.launch.py  example launch
+    ├── launch/sim.launch.py   Gazebo demo world + ros_gz bridge -> `ros2 launch boat sim.launch.py`
     └── config/params.yaml     example parameters
 ```
 
