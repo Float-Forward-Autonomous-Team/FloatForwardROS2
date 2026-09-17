@@ -39,10 +39,9 @@ use. It's a separate program from ROS 2, with its own pub/sub transport
 glue package family (`ros_gz_sim`, `ros_gz_bridge`, …) that lets Gazebo and
 ROS 2 talk to each other.
 
-Since not everyone on the team is on the same OS (and there's no GPU
-passthrough into Docker anyway), Gazebo's GUI runs *inside* the container
+Gazebo's GUI runs *inside* the container
 against a virtual display and streams to your browser over
-[noVNC](https://novnc.com/) — no host setup beyond Docker and a browser.
+[noVNC](https://novnc.com/).
 
 **Run it:**
 
