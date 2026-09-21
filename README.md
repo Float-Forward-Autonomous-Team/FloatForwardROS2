@@ -94,6 +94,21 @@ RobotX competition venue — it downloads large models from Gazebo Fuel on first
 launch and is noticeably heavier under this container's software (CPU) rendering,
 so prefer a task world unless you specifically need the full venue.
 
+**Single-engine boat.** The stock WAM-V has two engines; ours has one. `make vrx`
+first generates a WAM-V URDF from `boat/config/wamv_single_thruster.yaml` (VRX's
+own [thruster-YAML generator](https://github.com/osrf/vrx/wiki/generate_wamv_tutorial))
+and spawns that. Edit the YAML to move the engine or add more (`prefix`,
+`position`, `orientation`; up to 4). The engine is `wamv/thrusters/main/thrust`
+and `.../pos` (not `left`/`right`). Things to know:
+
+- The generator prints a "NOT compliant" error for our centerline engine — that
+  only concerns official VRX competition entries; the URDF is still generated.
+- Each engine's thrust limit is half of what the stock boat needs for top speed,
+  so one engine is slower (roughly 5 m/s instead of 7.7 m/s) and accelerates slower.
+- One engine can't steer with differential thrust: steer by rotating the engine
+  via `.../thrusters/main/pos` (it takes rotation-rate commands).
+- VRX's joystick teleop (`usv_joy_teleop.py`) assumes `left`/`right` and won't work.
+
 ## Repo layout
 
 ```
