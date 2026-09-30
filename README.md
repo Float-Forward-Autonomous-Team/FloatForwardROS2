@@ -104,10 +104,16 @@ and `.../pos` (not `left`/`right`). Things to know:
 - The generator prints a "NOT compliant" error for our centerline engine — that
   only concerns official VRX competition entries; the URDF is still generated.
 - Each engine's thrust limit is half of what the stock boat needs for top speed,
-  so one engine is slower (roughly 5 m/s instead of 7.7 m/s) and accelerates slower.
+  so one engine is slower (roughly 3.6 m/s instead of 5.3 m/s) and accelerates slower.
 - One engine can't steer with differential thrust: steer by rotating the engine
-  via `.../thrusters/main/pos` (it takes rotation-rate commands).
+  via `.../thrusters/main/pos` (it takes a target angle in radians).
 - VRX's joystick teleop (`usv_joy_teleop.py`) assumes `left`/`right` and won't work.
+
+See [SIMULATION.md](SIMULATION.md) for the full guide: vessel dynamics, sensors,
+topics, TF frames, waves and wind, launching, and running the same nodes against
+simulated and real sensors.
+[ROS_CHEATSHEET.md](ROS_CHEATSHEET.md) is the quick reference: every topic, message
+type and node.
 
 ## Repo layout
 
@@ -120,6 +126,7 @@ float_forward/
 ├── pyproject.toml
 ├── .pre-commit-config.yaml
 ├── .github/workflows/ci.yml
+├── scripts/                   helper scripts run by the Makefile (apply_boat_params.py, apply_environment.py)
 ├── vrx/                        vendored VRX source (WAM-V + task worlds), cloned at image build — see Dockerfile
 └── boat/                      ROS 2 package (ament_python)
     ├── package.xml            dependencies + build type
@@ -130,7 +137,12 @@ float_forward/
     │   └── heartbeat.py       example node -> `ros2 run boat heartbeat`
     ├── launch/boat.launch.py  example launch
     ├── launch/sim.launch.py   Gazebo demo world + ros_gz bridge -> `ros2 launch boat sim.launch.py`
-    └── config/params.yaml     example parameters
+    └── config/
+        ├── params.yaml                  example parameters
+        ├── wamv_single_thruster.yaml    engine position
+        ├── wamv_sensors.yaml            which sensors, and where they are mounted
+        ├── boat_params.yaml             hull, drag, thrust and sensor values
+        └── environment.yaml             wind and waves
 ```
 
 ## Add a node

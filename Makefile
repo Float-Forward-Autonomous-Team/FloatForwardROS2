@@ -3,6 +3,9 @@
 WORLD ?= stationkeeping_task
 HEADLESS ?= False
 THRUSTER_YAML ?= /ws/src/boat/boat/config/wamv_single_thruster.yaml
+SENSOR_YAML ?= /ws/src/boat/boat/config/wamv_sensors.yaml
+ENVIRONMENT ?= /ws/src/boat/boat/config/environment.yaml
+BOAT_PARAMS ?= /ws/src/boat/boat/config/boat_params.yaml
 
 # `docker compose exec ... bash -lc` runs a login but non-interactive shell,
 # and Ubuntu's default ~/.bashrc returns immediately when non-interactive —
@@ -28,13 +31,18 @@ sim: up  ## start the container and print how to reach the Gazebo GUI
 	@echo "Open http://localhost:6080/vnc.html?resize=scale in a browser and click Connect (no password)."
 	@echo "Then run: make sh   and inside the shell: ros2 launch boat sim.launch.py"
 
-# generate_wamv writes <yaml name>.xacro next to the yaml, so generate from a copy
-# in /ws instead of littering the bind-mounted repo.
-vrx: up  ## launch a VRX world with our single-engine WAM-V (needs `make colcon` first); override with WORLD=<name>/HEADLESS=True/THRUSTER_YAML=<path>
+# generate_wamv writes <yaml name>.xacro next to each yaml, so generate from copies
+# in /ws instead of littering the bind-mounted repo. apply_boat_params then writes
+# our hull/drag/thrust/sensor values (BOAT_PARAMS) over the stock WAM-V ones in the URDF.
+# apply_environment does the same for wind and waves (ENVIRONMENT), into a copy of the world.
+vrx: up  ## launch a VRX world with our single-engine WAM-V (needs `make colcon` first); override with WORLD=<name>/HEADLESS=True/THRUSTER_YAML=<path>/SENSOR_YAML=<path>/BOAT_PARAMS=<path>/ENVIRONMENT=<path>
 	docker compose exec ros bash -lc "$(ROS_ENV) && \
 		cp $(THRUSTER_YAML) /ws/thrusters.yaml && \
-		ros2 launch vrx_gazebo generate_wamv.launch.py thruster_yaml:=/ws/thrusters.yaml wamv_target:=/ws/wamv.urdf && \
-		ros2 launch vrx_gz competition.launch.py world:=$(WORLD) headless:=$(HEADLESS) urdf:=/ws/wamv.urdf"
+		cp $(SENSOR_YAML) /ws/sensors.yaml && \
+		ros2 launch vrx_gazebo generate_wamv.launch.py thruster_yaml:=/ws/thrusters.yaml component_yaml:=/ws/sensors.yaml wamv_target:=/ws/wamv.urdf && \
+		python3 /ws/src/boat/scripts/apply_boat_params.py $(BOAT_PARAMS) /ws/wamv.urdf && \
+		python3 /ws/src/boat/scripts/apply_environment.py $(ENVIRONMENT) $(WORLD) /ws/worlds && \
+		ros2 launch vrx_gz competition.launch.py world:=/ws/worlds/$(WORLD) headless:=$(HEADLESS) urdf:=/ws/wamv.urdf"
 
 down:    ## stop the container (build/install/log volumes kept)
 	docker compose down
