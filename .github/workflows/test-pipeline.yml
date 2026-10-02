@@ -23,5 +23,5 @@ jobs:
       - run: |
           docker compose run --rm ros bash -lc "
             rosdep install --from-paths src --ignore-src -r -y &&
-            colcon build --symlink-install
+            colcon build --symlink-install --merge-install
           "

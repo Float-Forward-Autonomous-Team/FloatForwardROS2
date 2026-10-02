@@ -1,4 +1,4 @@
-.PHONY: build up sh colcon sim vrx down clean
+.PHONY: build up sh colcon vrx down clean
 
 WORLD ?= stationkeeping_task
 HEADLESS ?= False
@@ -22,14 +22,13 @@ up:      ## start the container in the background (Gazebo GUI stack starts autom
 sh: up   ## open a shell in the running container
 	docker compose exec ros bash
 
+# --merge-install puts every package under one install/share/, as VRX expects:
+# the WAM-V URDF's package://wamv_description meshes (hull, engine, propeller)
+# only resolve through vrx_gazebo's install/share/ resource path. without --merge-install
+# some boat's features don't render
 colcon: up  ## rosdep install + colcon build inside the container
 	docker compose exec ros bash -lc \
-		"$(ROS_ENV) && cd /ws && sudo apt-get update && rosdep install --from-paths src --ignore-src -r -y && colcon build --symlink-install"
-
-sim: up  ## start the container and print how to reach the Gazebo GUI
-	@echo "Gazebo GUI stack is starting in the background."
-	@echo "Open http://localhost:6080/vnc.html?resize=scale in a browser and click Connect (no password)."
-	@echo "Then run: make sh   and inside the shell: ros2 launch boat sim.launch.py"
+		"$(ROS_ENV) && cd /ws && sudo apt-get update && rosdep install --from-paths src --ignore-src -r -y && colcon build --symlink-install --merge-install"
 
 # generate_wamv writes <yaml name>.xacro next to each yaml, so generate from copies
 # in /ws instead of littering the bind-mounted repo. apply_boat_params then writes

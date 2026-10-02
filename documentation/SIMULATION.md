@@ -4,7 +4,7 @@ How the VRX boat simulation in this repo works: the vessel model, the simulated
 sensors, the ROS 2 interfaces, the coordinate frames, the environment, how it is
 launched, and how the same nodes can run against simulated and real sensors.
 
-For setup and the `make` commands, see the [README](README.md).
+For setup and the `make` commands, see the [README](../README.md).
 
 > **Status of this document.** Everything here was read from the VRX `v3.1.2`
 > source and this repo's config, not observed on a running simulation. Confirm
@@ -30,29 +30,42 @@ For setup and the `make` commands, see the [README](README.md).
 The simulation is [VRX](https://github.com/osrf/vrx) (Virtual RobotX) running on
 Gazebo Harmonic, connected to ROS 2 Jazzy through `ros_gz_bridge`. VRX is cloned
 into the Docker image at build time (pinned to `v3.1.2`, under `/ws/src/vrx`) and
-is not patched. The only boat-specific file in this repo is
-`boat/config/wamv_single_thruster.yaml`.
+is not patched. Our boat is described by four files in `boat/config/`:
 
-`make vrx` does two things inside the container:
+| File | Sets |
+|---|---|
+| `wamv_single_thruster.yaml` | Engine name and position |
+| `wamv_sensors.yaml` | Which sensors, and where they are mounted |
+| `boat_params.yaml` | Hull, drag, thrust and sensor values |
+| `environment.yaml` | Wind and waves |
 
-1. **Generates the boat.** VRX's `generate_wamv` reads the thruster YAML and
-   writes `/ws/wamv.urdf`.
-2. **Launches the world.** `competition.launch.py` starts Gazebo with the chosen
-   world, spawns that URDF, and starts the ROS bridges and TF nodes.
+`make vrx` does four things inside the container:
+
+1. **Generates the boat.** VRX's `generate_wamv` reads the thruster and sensor
+   YAMLs and writes `/ws/wamv.urdf`.
+2. **Applies our boat values.** `scripts/apply_boat_params.py` writes
+   `boat_params.yaml` into that URDF.
+3. **Applies our environment.** `scripts/apply_environment.py` copies the chosen
+   world to `/ws/worlds/` with the wind and waves from `environment.yaml`.
+4. **Launches the world.** `competition.launch.py` starts Gazebo with that world,
+   spawns the URDF, and starts the ROS bridges and TF nodes.
 
 ```
-wamv_single_thruster.yaml ──generate_wamv──> /ws/wamv.urdf
-                                                  │
-world .sdf ──> Gazebo (physics, sensors) <──spawn─┘
-                     │
-               ros_gz_bridge ──> ROS 2 topics under /wamv, /tf, /clock
+thruster + sensor YAMLs ──generate_wamv──> /ws/wamv.urdf
+boat_params.yaml ──apply_boat_params──────> (written into /ws/wamv.urdf)
+VRX world + environment.yaml ──apply_environment──> /ws/worlds/<world>.sdf
+
+/ws/wamv.urdf + /ws/worlds/<world>.sdf ──competition.launch.py──> Gazebo (physics, sensors)
+                                                                      │
+                                         ros_gz_bridge ──> ROS 2 topics under /wamv, /tf, /clock
 ```
 
 ## 2. Vessel model and dynamics
 
 The boat is a WAM-V catamaran simulated as one rigid body, `wamv/base_link`
 (180 kg hull, plus batteries, sensors and the engine). Physics runs on the DART
-engine with a 4 ms step. Four plugins produce the forces:
+engine with a 4 ms step. Four plugins on the boat produce the forces (wind, when
+switched on, adds a fifth; see section 7):
 
 | Force | Plugin | What it does |
 |---|---|---|
@@ -132,7 +145,7 @@ The defaults are VRX's example cameras, LiDAR, GNSS and IMU:
 |---|---|---|---|
 | Camera | 3, forward-facing, pitched down 15° (`front_left_camera`, `front_right_camera`, `far_left_camera`) | 1280×720 RGB, 80° horizontal FOV, 30 Hz | Gaussian per pixel, σ = 0.007 |
 | LiDAR | 1 (`lidar_wamv`), 1.8 m high, pitched 8° | 16 beams, ±15° vertical, 360° horizontal, 1875 samples per ring, 10 Hz, 0.1–130 m | Gaussian, σ = 0.01 m |
-| GNSS | 1 (`gps_wamv`), at the stern | 20 Hz | None (perfect fix) |
+| GNSS | 1 (`gps_wamv`), aft of centre (x = −0.85 m) | 20 Hz | None (perfect fix) |
 | IMU | 1 (`imu_wamv`) | 100 Hz, orientation in ENU | Gaussian noise plus bias on gyro and accelerometer |
 
 VRX's example set also has an acoustic pinger receiver and a ball shooter; ours
@@ -258,8 +271,13 @@ Other launch arguments not exposed by the Makefile:
 `sydney_regatta` venue. A task runs through *initial*, *ready* and *running*
 phases, reported on `/vrx/task/info`.
 
-The `boat` package does not yet have its own VRX launch file; `sim.launch.py`
-is only the shapes demo that checks the bridge.
+**Gazebo stops itself when the task ends.** In `stationkeeping_task` the phases
+last 10 s, 10 s and 300 s, so after about 5 min 20 s of sim time VRX's scoring
+plugin shuts Gazebo down (its `per_plugin_exit_on_completion` option defaults to
+true and the VRX worlds don't change it). Run `make vrx` again to restart.
+
+The `boat` package does not yet have its own VRX launch file; `make vrx` uses
+VRX's `competition.launch.py`.
 
 ## 9. Same interfaces for simulated and real sensors
 
@@ -340,3 +358,4 @@ simulation.
 - GNSS is noiseless unless noise is set in `boat_params.yaml`; there is no water
   current; wind is off until set in `environment.yaml`.
 - Rendering is on the CPU inside the container, so camera and LiDAR are slow.
+- Gazebo shuts down when the task timer ends (section 8).
