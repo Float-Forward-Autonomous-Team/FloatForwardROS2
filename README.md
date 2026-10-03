@@ -16,7 +16,7 @@ needs ROS installed on their own machine, just Docker and `make`.
 
 ```bash
 git clone https://github.com/Float-Forward-Autonomous-Team/FloatForwardROS2.git
-cd float_forward
+cd FloatForwardROS2
 
 make build     # build the docker image (first time, or after editing Dockerfile)
 make colcon    # start the container + rosdep install + colcon build
@@ -43,33 +43,72 @@ Gazebo's GUI runs *inside* the container
 against a virtual display and streams to your browser over
 [noVNC](https://novnc.com/).
 
+### VRX (boat simulation)
+
+[VRX](https://github.com/osrf/vrx) is OSRF's Virtual RobotX simulator: it adds a
+WAM-V catamaran model (thrusters, buoyancy/wave physics, a sensor suite) and a set
+of ready-made task worlds. It's cloned into the Docker image at `/ws/src/vrx`
+(pinned to `v3.1.2`) and builds alongside `boat` via the normal colcon step.
+
 **Run it:**
 
 ```bash
-make build     # only needed once, or after editing Dockerfile
-make sim       # starts the container; prints the noVNC URL
+make build     # clones vrx into the image — only needed once, or after editing Dockerfile
+make colcon    # builds vrx_gz / vrx_ros / vrx_urdf alongside boat
+make vrx       # starts the container and launches a VRX world
 ```
 
 1. Open `http://localhost:6080/vnc.html?resize=scale` in a browser and click **Connect**
-   (no password). You should see a plain desktop within a few seconds — if
-   it's blank, reload once (the display server can take a moment to start).
-2. `make sh` — open a shell in the container.
-3. `ros2 launch boat sim.launch.py` — Gazebo's GUI should appear in the
-   noVNC tab showing a box, sphere, and cylinder on a ground plane.
-4. In a second `make sh` shell: `ros2 topic echo /clock` (incrementing sim
-   time) and `ros2 topic list` (includes `/clock`) confirm the bridge.
+   (no password). If it's blank, reload once (the display server can take a moment
+   to start). The WAM-V should appear on the water.
+2. In a `make sh` shell, `ros2 topic list` shows the boat's `/wamv/...` topics.
+
+Pick the world with `WORLD=<name>` (default: `stationkeeping_task`, a single light
+task world — good for day-to-day dev):
+
+```bash
+make vrx WORLD=wayfinding_task
+```
+
+Other task worlds: `navigation_task`, `follow_path_task`, `scan_dock_deliver_task`,
+`perception_task`, `acoustic_perception_task`, `acoustic_tracking_task`,
+`gymkhana_task`, `wildlife_task`.
+
+Things to know:
+- Our boat has one engine, `main` (the stock WAM-V has `left` and `right`), placed by
+  `boat/config/wamv_single_thruster.yaml`. Its topics are `/wamv/thrusters/main/thrust`
+  and `/wamv/thrusters/main/pos`.
+- One engine gives half the stock boat's total thrust (2353 N instead of 4707 N), so
+  top speed is about 3.6 m/s instead of 5.3 m/s, and it accelerates more slowly.
+- One engine can't steer with differential thrust: steer by rotating the engine
+  via `.../thrusters/main/pos` (it takes a target angle in radians).
+- VRX's joystick teleop (`usv_joy_teleop.py`) assumes `left`/`right` and won't work.
+- Gazebo closes itself when the task's timer runs out: about 5 min 20 s of sim time
+  for `stationkeeping_task`. Run `make vrx` again to restart.
+
+See [SIMULATION.md](documentation/SIMULATION.md) for the full guide: vessel dynamics, sensors,
+topics, TF frames, waves and wind, launching, and running the same nodes against
+simulated and real sensors.
+[ROS_CHEATSHEET.md](documentation/ROS_CHEATSHEET.md) is the quick reference: every topic, message
+type and node.
 
 ## Repo layout
 
 ```
-float_forward/
+FloatForwardROS2/
+├── README.md
 ├── Dockerfile                 the environment: ROS 2 Jazzy + colcon + rosdep + Gazebo + noVNC
 ├── docker/                    supervisord.conf + entrypoint.sh for the in-container GUI stack
 ├── compose.yml
 ├── Makefile
 ├── pyproject.toml
 ├── .pre-commit-config.yaml
-├── .github/workflows/ci.yml
+├── .gitignore  .dockerignore
+├── .github/workflows/test-pipeline.yml   CI: pre-commit + docker build + colcon build
+├── documentation/
+│   ├── SIMULATION.md          how the VRX simulation works
+│   └── ROS_CHEATSHEET.md      every topic, message type and node
+├── scripts/                   helper scripts run by the Makefile (apply_boat_params.py, apply_environment.py)
 └── boat/                      ROS 2 package (ament_python)
     ├── package.xml            dependencies + build type
     ├── setup.py  setup.cfg    entry points, data files
@@ -78,8 +117,12 @@ float_forward/
     │   ├── __init__.py
     │   └── heartbeat.py       example node -> `ros2 run boat heartbeat`
     ├── launch/boat.launch.py  example launch
-    ├── launch/sim.launch.py   Gazebo demo world + ros_gz bridge -> `ros2 launch boat sim.launch.py`
-    └── config/params.yaml     example parameters
+    └── config/
+        ├── params.yaml                  example parameters
+        ├── wamv_single_thruster.yaml    engine position
+        ├── wamv_sensors.yaml            which sensors, and where they are mounted
+        ├── boat_params.yaml             hull, drag, thrust and sensor values
+        └── environment.yaml             wind and waves
 ```
 
 ## Add a node
@@ -108,17 +151,17 @@ What to do after a change:
 |------------------------------------|------------------------------------------------|
 | Python node / launch file / YAML   | nothing — `ros2 run` again                     |
 | new node, entry_point, or package  | `make colcon`                                  |
-| C++ source                         | `colcon build --packages-select boat`          |
 | `package.xml` dependency           | `rosdep install --from-paths src --ignore-src -r -y`, then rebuild |
 | `Dockerfile`                       | `make build`                                   |
 
-`package.xml` list the dependencies. The dependencies are resolved by [`rosdep`](https://docs.ros.org/en/rolling/Tutorials/Intermediate/Rosdep.html) (rosdep is similar to `apt` or `pip` but for ROS packages). If you add a dependency, you must run `rosdep install` before rebuilding.
+`package.xml` lists the dependencies. The dependencies are resolved by [`rosdep`](https://docs.ros.org/en/rolling/Tutorials/Intermediate/Rosdep.html) (rosdep is similar to `apt` or `pip` but for ROS packages). If you add a dependency, you must run `rosdep install` before rebuilding.
 
 If a deleted node still runs or a renamed package still shows up, the build is
-stale: `rm -rf build install log && colcon build --symlink-install`.
+stale: `rm -rf build install log && colcon build --symlink-install --merge-install`.
+Always pass `--merge-install`: VRX needs it to find the WAM-V meshes, and colcon
+refuses to mix it with an install built without it (fix that with `make clean`).
 
 ## CI
 
 Every pull request runs the same two things: `pre-commit run --all-files`, and
 `make build` + `make colcon` — so a green PR means it builds and passes lint.
-# FloatForwardROS2

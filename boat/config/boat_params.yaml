@@ -1,0 +1,50 @@
+# Physical parameters of the boat and its sensors. `make vrx` writes these into the generated
+# WAM-V URDF (see scripts/apply_boat_params.py). The values below are the
+# stock VRX WAM-V ones: replace them with measurements of our boat.
+# Engine position is set separately, in wamv_single_thruster.yaml.
+
+hull:
+  mass: 180.0            # kg, hull only (engine, batteries and sensors are added on top)
+  inertia:               # kg m^2, about the hull's centre
+    ixx: 120.0           # roll
+    iyy: 393.0           # pitch
+    izz: 446.0           # yaw
+  length: 4.9            # m, length of each hull
+  radius: 0.213          # m, each hull is modelled as a cylinder
+  spacing: 1.03          # m, from the boat's centreline to each hull's centreline
+
+# Water drag: force = (linear + quadratic * |speed|) * speed, per axis.
+drag:
+  xU: 100.0              # surge (forward), linear
+  xUU: 150.0             # surge, quadratic
+  yV: 100.0              # sway (sideways), linear
+  yVV: 100.0             # sway, quadratic
+  nR: 800.0              # yaw, linear
+  nRR: 800.0             # yaw, quadratic
+
+thruster:
+  max_thrust: 2353.5     # N, full forward throttle (bollard pull)
+
+# Sensor specs, applied to every sensor of that type listed in wamv_sensors.yaml.
+camera:
+  width: 1280            # pixels
+  height: 720            # pixels
+  horizontal_fov: 80.0   # degrees
+  rate: 30.0             # Hz
+  noise_stddev: 0.007    # per pixel, on a 0-1 colour scale
+
+lidar:
+  beams: 16              # vertical beams
+  vertical_fov: [-15.0, 15.0]   # degrees, lowest and highest beam
+  samples: 1875          # points per beam per revolution
+  range: [0.1, 130.0]    # m, min and max
+  rate: 10.0             # Hz
+  noise_stddev: 0.01     # m
+
+gps:
+  rate: 20.0             # Hz
+  horizontal_noise_stddev: 0.0   # m, 0 = perfect fix
+  vertical_noise_stddev: 0.0     # m
+
+imu:
+  rate: 100.0            # Hz

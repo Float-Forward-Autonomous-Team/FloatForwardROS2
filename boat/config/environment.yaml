@@ -1,0 +1,15 @@
+# Wind and waves for the simulation. `make vrx` writes these into a copy of the
+# chosen world (see scripts/apply_environment.py). The values below are the
+# stock VRX ones: waves on, wind off. Keep several of these files (calm, windy,
+# rough) and pick one with `make vrx ENVIRONMENT=<path>`.
+
+wind:
+  speed: 0.0             # m/s, mean wind speed (0 = no wind)
+  direction: 240.0       # degrees, where the wind blows towards: 0 = east, 90 = north
+  gust_strength: 0.0     # m/s, how much the speed varies around the mean (0 = steady)
+  gust_time: 2.0         # s, how quickly gusts build and fade
+
+waves:
+  gain: 0.3              # wave height multiplier (0 = flat water)
+  period: 5.0            # s, time between wave crests
+  direction: 0.0         # degrees, where the waves travel towards: 0 = east, 90 = north
