@@ -27,6 +27,7 @@ setup(
     entry_points={
         "console_scripts": [
             "heartbeat = boat.heartbeat:main",
+            "mission_manager = boat.mission_manager:main",
         ],
     },
 )
