@@ -1,0 +1,13 @@
+# Editable test obstacles in Gazebo world coordinates (x east, y north, metres).
+# They are visible, collidable spheres and are included in both ROS outputs.
+obstacles:
+  - name: moving_obstacle_1
+    classification: simulated_obstacle
+    radius_m: 1.2
+    speed_mps: 1.0
+    loop: true
+    waypoints_xy:
+      - [-500.0, 170.0]
+      - [-480.0, 170.0]
+      - [-480.0, 190.0]
+      - [-500.0, 190.0]

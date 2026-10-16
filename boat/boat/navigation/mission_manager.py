@@ -5,14 +5,10 @@ from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
 from std_msgs.msg import Bool, String
 
-# Hardcoded for now; later this comes from a YAML file in config or
-# a vrx simulation scenario.
-# x/y are metres in the local "map" frame (x east, y north). Will have to ask the perception and odometry nodes
-# to publish data in that frame.
+# One wayfinding demo goal in the local "map" frame (metres, x east, y north).
+# Later the mission can come from a scenario or config file.
 MISSION = [
-    {"type": "goto", "x": 20.0, "y": 0.0},
-    {"type": "goto", "x": 20.0, "y": 30.0},
-    {"type": "goto", "x": 0.0, "y": 0.0},
+    {"type": "goto", "x": -593.0, "y": 241.0},
 ]
 
 
@@ -42,7 +38,9 @@ class MissionManager(Node):
             return
         self.task_started = self.get_clock().now()
         self.set_state("RUNNING")
-        self.get_logger().info(f"task {self.index + 1}/{len(self.tasks)}: {self.tasks[self.index]}")
+        self.get_logger().info(
+            f"task {self.index + 1}/{len(self.tasks)}: {self.tasks[self.index]}"
+        )
 
     def on_task_done(self, msg):
         """Advance on success, abort on failure; ignore reports when nothing is running."""

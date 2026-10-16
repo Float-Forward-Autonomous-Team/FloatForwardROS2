@@ -27,7 +27,11 @@ setup(
     entry_points={
         "console_scripts": [
             "heartbeat = boat.heartbeat:main",
-            "mission_manager = boat.mission_manager:main",
+            "sim_truth = boat.navigation.simulation.sim_truth:main",
+            "gazebo_obstacles = boat.navigation.simulation.gazebo_obstacles:main",
+            "navigation_monitor = boat.navigation.navigation_monitor:main",
+            "astar_navigation = boat.navigation.planning.astar_navigation:main",
+            "mission_manager = boat.navigation.mission_manager:main",
         ],
     },
 )
