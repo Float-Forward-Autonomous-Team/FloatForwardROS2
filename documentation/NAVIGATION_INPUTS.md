@@ -10,7 +10,7 @@ Build the new `boat_interfaces` and `boat` packages with your normal colcon
 workflow. Start the world in one terminal:
 
 ```bash
-make vrx WORLD=wayfinding_task
+make vrx-nav WORLD=wayfinding_task
 ```
 
 After Gazebo has loaded, open another terminal:
@@ -47,7 +47,11 @@ The Python code lives in `boat/boat/navigation/`, grouped by responsibility:
 | `simulation/obstacle_trajectory.py` | Parse and evaluate configured obstacle paths |
 
 The ROS messages remain in `boat_interfaces/msg/`, the launch description in
-`boat/launch/`, and the trajectory YAML in `boat/config/`.
+`boat/launch/`, and the trajectory YAML in `boat/config/`. The shared
+`scripts/apply_environment.py` helper copies a VRX world before launch. For the
+navigation targets, its `--keep-running` option gives each VRX scoring plugin
+an unlimited running duration and exit delay, and disables automatic shutdown.
+Standard competition targets omit that option.
 
 The mission manager publishes `/mission/goal` (`PoseStamped`) and
 `/mission/state` (`String`), and advances when it receives
@@ -119,5 +123,7 @@ to `map`, and add a **Map** display for `/navigation/occupancy_map`. Add an
 `/mission/goal`. The route should end near `(-593, 241)`. RViz is not included
 in the default image; install `ros-jazzy-rviz2` in the container if needed.
 
-The standard `make vrx` command retains VRX's task timer and may stop the
-simulator when scoring completes. Restart it if you need a longer test.
+`make vrx-nav` generates a development copy of the VRX
+world with no scoring deadline or automatic shutdown. Gazebo keeps running after
+waypoint completion until you stop the launch process (Ctrl+C). The standard
+`make vrx` command retains VRX's normal task timer.

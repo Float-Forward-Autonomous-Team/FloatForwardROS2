@@ -55,10 +55,10 @@ def apply_thruster(root, thruster):
         set_child(engine, "max_thrust_cmd", thruster["max_thrust"])
 
 
-def sensors(root, sensor_type):
-    """Return the Gazebo sensors of `sensor_type`, failing if the URDF has none."""
+def sensors(root, sensor_type, allow_missing=False):
+    """Return Gazebo sensors of `sensor_type`, optionally allowing none."""
     found = [s for s in root.iter("sensor") if s.get("type") == sensor_type]
-    if not found:
+    if not found and not allow_missing:
         sys.exit(f"apply_boat_params: no <sensor type='{sensor_type}'> in the URDF")
     return found
 
@@ -72,9 +72,9 @@ def set_path(sensor, path, value):
     node.text = str(value)
 
 
-def apply_camera(root, camera):
+def apply_camera(root, camera, allow_missing=False):
     """Set resolution, field of view, rate and noise of every camera."""
-    for sensor in sensors(root, "camera"):
+    for sensor in sensors(root, "camera", allow_missing):
         set_path(sensor, "update_rate", camera["rate"])
         set_path(sensor, "camera/horizontal_fov", math.radians(camera["horizontal_fov"]))
         set_path(sensor, "camera/image/width", camera["width"])
@@ -82,9 +82,9 @@ def apply_camera(root, camera):
         set_path(sensor, "camera/noise/stddev", camera["noise_stddev"])
 
 
-def apply_lidar(root, lidar):
+def apply_lidar(root, lidar, allow_missing=False):
     """Set beam layout, range, rate and noise of every lidar."""
-    for sensor in sensors(root, "gpu_ray"):
+    for sensor in sensors(root, "gpu_ray", allow_missing):
         set_path(sensor, "update_rate", lidar["rate"])
         set_path(sensor, "ray/scan/horizontal/samples", lidar["samples"])
         set_path(sensor, "ray/scan/vertical/samples", lidar["beams"])
@@ -115,9 +115,15 @@ def apply_imu(root, imu):
 
 def main():
     """Apply the parameter file to the URDF given on the command line."""
-    if len(sys.argv) != 3:
-        sys.exit("usage: apply_boat_params.py <boat_params.yaml> <wamv.urdf>")
-    params_path, urdf_path = sys.argv[1:]
+    if len(sys.argv) not in (3, 4) or (
+        len(sys.argv) == 4 and sys.argv[3] != "--allow-missing-perception-sensors"
+    ):
+        sys.exit(
+            "usage: apply_boat_params.py <boat_params.yaml> <wamv.urdf> "
+            "[--allow-missing-perception-sensors]"
+        )
+    params_path, urdf_path = sys.argv[1:3]
+    allow_missing_perception_sensors = len(sys.argv) == 4
 
     with open(params_path) as f:
         params = yaml.safe_load(f)
@@ -127,8 +133,8 @@ def main():
     apply_hull(root, params["hull"])
     apply_drag(root, params["drag"])
     apply_thruster(root, params["thruster"])
-    apply_camera(root, params["camera"])
-    apply_lidar(root, params["lidar"])
+    apply_camera(root, params["camera"], allow_missing_perception_sensors)
+    apply_lidar(root, params["lidar"], allow_missing_perception_sensors)
     apply_gps(root, params["gps"])
     apply_imu(root, params["imu"])
     tree.write(urdf_path, xml_declaration=True, encoding="unicode")

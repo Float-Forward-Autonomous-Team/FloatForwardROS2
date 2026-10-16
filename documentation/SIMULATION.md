@@ -244,7 +244,18 @@ make vrx THRUSTER_YAML=<path>         # different engine layout
 make vrx SENSOR_YAML=<path>           # different sensor layout
 make vrx BOAT_PARAMS=<path>           # different hull, drag, thrust and sensor values
 make vrx ENVIRONMENT=<path>           # different wind and waves
+make vrx-nav                          # navigation profile: GNSS + IMU, no cameras or LiDAR
 ```
+
+`make vrx-nav` uses `boat/config/wamv_navigation_sensors.yaml`. Camera and LiDAR
+components are absent from the generated URDF, so Gazebo does not simulate them
+or create their ROS bridges. GNSS and IMU remain available, but this profile
+still does not provide an odometry estimate; navigation needs a state publisher
+or a separate ground-truth adapter. The regular `make vrx` profile is unchanged.
+
+The launch also adds the WAM-V description and Gazebo package directories to
+`GZ_SIM_RESOURCE_PATH`. This lets Gazebo resolve the hull, GPS, engine, and
+propeller meshes when the installed workspace uses separate package prefixes.
 
 The target runs `generate_wamv.launch.py`, then `scripts/apply_boat_params.py`
 and `scripts/apply_environment.py`, then
@@ -271,10 +282,11 @@ Other launch arguments not exposed by the Makefile:
 `sydney_regatta` venue. A task runs through *initial*, *ready* and *running*
 phases, reported on `/vrx/task/info`.
 
-**Gazebo stops itself when the task ends.** In `stationkeeping_task` the phases
-last 10 s, 10 s and 300 s, so after about 5 min 20 s of sim time VRX's scoring
-plugin shuts Gazebo down (its `per_plugin_exit_on_completion` option defaults to
-true and the VRX worlds don't change it). Run `make vrx` again to restart.
+**The standard competition world stops when the task ends.** In
+`stationkeeping_task` the phases last 10 s, 10 s and 300 s, so after about
+5 min 20 s of sim time VRX's scoring plugin shuts Gazebo down. For navigation
+development, `make vrx-nav` generates a world copy with no
+task deadline or automatic shutdown; stop it with Ctrl+C when finished.
 
 The `boat` package does not yet have its own VRX launch file; `make vrx` uses
 VRX's `competition.launch.py`.

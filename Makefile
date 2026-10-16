@@ -1,11 +1,13 @@
-.PHONY: build up sh colcon vrx down clean
+.PHONY: build up sh colcon vrx vrx-nav down clean
 
 WORLD ?= stationkeeping_task
 HEADLESS ?= False
 THRUSTER_YAML ?= /ws/src/boat/boat/config/wamv_single_thruster.yaml
 SENSOR_YAML ?= /ws/src/boat/boat/config/wamv_sensors.yaml
 ENVIRONMENT ?= /ws/src/boat/boat/config/environment.yaml
+ENVIRONMENT_FLAGS ?=
 BOAT_PARAMS ?= /ws/src/boat/boat/config/boat_params.yaml
+BOAT_PARAM_FLAGS ?=
 
 # `docker compose exec ... bash -lc` runs a login but non-interactive shell,
 # and Ubuntu's default ~/.bashrc returns immediately when non-interactive —
@@ -39,9 +41,15 @@ vrx: up  ## launch a VRX world with our single-engine WAM-V (needs `make colcon`
 		cp $(THRUSTER_YAML) /ws/thrusters.yaml && \
 		cp $(SENSOR_YAML) /ws/sensors.yaml && \
 		ros2 launch vrx_gazebo generate_wamv.launch.py thruster_yaml:=/ws/thrusters.yaml component_yaml:=/ws/sensors.yaml wamv_target:=/ws/wamv.urdf && \
-		python3 /ws/src/boat/scripts/apply_boat_params.py $(BOAT_PARAMS) /ws/wamv.urdf && \
-		python3 /ws/src/boat/scripts/apply_environment.py $(ENVIRONMENT) $(WORLD) /ws/worlds && \
+		python3 /ws/src/boat/scripts/apply_boat_params.py $(BOAT_PARAMS) /ws/wamv.urdf $(BOAT_PARAM_FLAGS) && \
+		python3 /ws/src/boat/scripts/apply_environment.py $(ENVIRONMENT) $(WORLD) /ws/worlds $(ENVIRONMENT_FLAGS) && \
+		export GZ_SIM_RESOURCE_PATH=/ws/install/share:/ws/install/wamv_description/share:/ws/install/wamv_gazebo/share:\$${GZ_SIM_RESOURCE_PATH:-} && \
 		ros2 launch vrx_gz competition.launch.py world:=/ws/worlds/$(WORLD) headless:=$(HEADLESS) urdf:=/ws/wamv.urdf"
+
+vrx-nav: SENSOR_YAML = /ws/src/boat/boat/config/wamv_navigation_sensors.yaml
+vrx-nav: BOAT_PARAM_FLAGS = --allow-missing-perception-sensors
+vrx-nav: ENVIRONMENT_FLAGS = --keep-running
+vrx-nav: vrx ## launch VRX with camera and LiDAR omitted for navigation development
 
 down:    ## stop the container (build/install/log volumes kept)
 	docker compose down

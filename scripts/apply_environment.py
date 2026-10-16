@@ -1,5 +1,6 @@
-"""Copy a VRX world, writing the wind and waves from environment.yaml into the copy."""
+"""Copy a VRX world, applying development settings to the copy."""
 
+import argparse
 import math
 import os
 import re
@@ -41,11 +42,50 @@ def set_wave_param(sdf, key, value):
     return substitute(sdf, pattern, value, f'wave parameter "{key}"')
 
 
+def keep_running_after_task(sdf):
+    """Keep VRX scoring active without a deadline or simulator shutdown."""
+    plugin_pattern = re.compile(
+        r'(<plugin\b[^>]*\bfilename="[^"]*ScoringPlugin\.so"[^>]*>)(.*?)(</plugin>)',
+        re.DOTALL,
+    )
+
+    def configure_plugin(match):
+        body = match.group(2)
+        for tag, value in (
+            ("running_state_duration", "inf"),
+            ("exit_delay", "inf"),
+            ("per_plugin_exit_on_completion", "false"),
+        ):
+            pattern = rf"(<{tag}>)[^<]*(</{tag}>)"
+            if re.search(pattern, body):
+                body = re.sub(
+                    pattern,
+                    lambda found: f"{found.group(1)}{value}{found.group(2)}",
+                    body,
+                )
+            else:
+                body = body.rstrip() + f"\n      <{tag}>{value}</{tag}>\n    "
+        return match.group(1) + body + match.group(3)
+
+    sdf, count = plugin_pattern.subn(configure_plugin, sdf)
+    if count == 0:
+        print("apply_environment: no VRX scoring plugin found; world is already unbounded")
+    return sdf
+
+
 def main():
     """Apply the environment file to the world given on the command line."""
-    if len(sys.argv) != 4:
-        sys.exit("usage: apply_environment.py <environment.yaml> <world name or .sdf> <out dir>")
-    env_path, world, out_dir = sys.argv[1:]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("environment", help="environment.yaml")
+    parser.add_argument("world", help="VRX world name or .sdf path")
+    parser.add_argument("out_dir", help="directory for the generated world")
+    parser.add_argument(
+        "--keep-running",
+        action="store_true",
+        help="keep scoring worlds running until Gazebo is stopped manually",
+    )
+    args = parser.parse_args()
+    env_path, world, out_dir = args.environment, args.world, args.out_dir
 
     with open(env_path) as f:
         env = yaml.safe_load(f)
@@ -60,6 +100,8 @@ def main():
     sdf = set_wave_param(sdf, "gain", waves["gain"])
     sdf = set_wave_param(sdf, "period", waves["period"])
     sdf = set_wave_param(sdf, "direction", math.radians(waves["direction"]))
+    if args.keep_running:
+        sdf = keep_running_after_task(sdf)
 
     # Same file name as the original: VRX derives its bridge topics from it.
     out_path = Path(out_dir) / world_path.name

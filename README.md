@@ -70,6 +70,12 @@ task world — good for day-to-day dev):
 make vrx WORLD=wayfinding_task
 ```
 
+For navigation development with synthetic perception, use `make vrx-nav` instead.
+It keeps GNSS and IMU but omits the three cameras and LiDAR from the generated
+boat, reducing rendering work. Pass `WORLD=<name>` to choose a different task
+world. Restart the VRX launch after switching profiles; `make build` is not
+needed for this YAML profile.
+
 The navigation demo adds a collision-derived occupancy grid, Gazebo GNSS
 velocity, physical moving obstacles, and a visible A* route to a demo goal.
 After starting `wayfinding_task`, run
