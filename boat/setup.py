@@ -27,6 +27,9 @@ setup(
     entry_points={
         "console_scripts": [
             "heartbeat = boat.heartbeat:main",
+            "lidar_obstacles = boat.lidar_obstacles:main",
+            "water_segmentation = boat.water_segmentation:main",
+            "yolo_detector = boat.yolo_detector:main",
         ],
     },
 )
