@@ -32,6 +32,7 @@ setup(
             "navigation_monitor = boat.navigation.navigation_monitor:main",
             "astar_navigation = boat.navigation.planning.astar_navigation:main",
             "mission_manager = boat.navigation.mission_manager:main",
+            "pid_controller = boat.pid_controller:main",
         ],
     },
 )
