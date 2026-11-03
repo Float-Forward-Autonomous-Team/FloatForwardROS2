@@ -4,6 +4,7 @@ import math
 import time
 
 from geometry_msgs.msg import PoseArray
+from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, NavSatFix
@@ -71,6 +72,11 @@ class pid_controller(Node):
         self.current_lon = 0.0
         self.current_x = 0.0
         self.current_y = 0.0
+        self.odom_x = 0.0
+        self.odom_y = 0.0
+        self.odom_yaw = 0.0
+        self.odom_vel = 0.0
+        self.target_frame_id = ""
         self.target_x = 0.0
         self.target_y = 0.0
         self.current_yaw = 0.0
@@ -83,11 +89,15 @@ class pid_controller(Node):
 
         # Flags for testing purposes
         self.has_gps = False
+        self.has_odometry = False
         self.has_waypoint = False
 
         # Sensors
         self.waypoint = self.create_subscription(
-            PoseArray, "/vrx/wayfinding/waypoints", self.waypoint_callback, 10
+            PoseArray, "/guidance/target_position", self.waypoint_callback, 10
+        )
+        self.odometry = self.create_subscription(
+            Odometry, "/navigation/boat_odometry", self.odometry_callback, 10
         )
         self.gps_data = self.create_subscription(
             NavSatFix, "/wamv/sensors/gps/gps/fix", self.gps_data_callback, 10
@@ -119,24 +129,35 @@ class pid_controller(Node):
 
     def imu_callback(self, msg):
         """Process IMU orientation data and publish actuator commands."""
-        if not self.has_gps or not self.has_waypoint:
+        if not self.has_waypoint:
+            return
+        using_map_frame = self.target_frame_id == "map"
+        if using_map_frame and not self.has_odometry:
+            return
+        if not using_map_frame and not self.has_gps:
             return
 
         # Imu sensor feedback
-        x = msg.orientation.x
-        y = msg.orientation.y
-        z = msg.orientation.z
-        w = msg.orientation.w
+        if not using_map_frame:
+            x = msg.orientation.x
+            y = msg.orientation.y
+            z = msg.orientation.z
+            w = msg.orientation.w
 
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-        self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
+            siny_cosp = 2 * (w * z + x * y)
+            cosy_cosp = 1 - 2 * (y * y + z * z)
+            self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
 
-        dx = self.target_x - self.current_x
-        dy = self.target_y - self.current_y
+        current_x = self.odom_x if using_map_frame else self.current_x
+        current_y = self.odom_y if using_map_frame else self.current_y
+        current_yaw = self.odom_yaw if using_map_frame else self.current_yaw
+        current_vel = self.odom_vel if using_map_frame else self.current_vel
+
+        dx = self.target_x - current_x
+        dy = self.target_y - current_y
         target_yaw = math.atan2(dy, dx)
 
-        raw_error = target_yaw - self.current_yaw
+        raw_error = target_yaw - current_yaw
         yaw_error = math.atan2(math.sin(raw_error), math.cos(raw_error))
         self.u_angle = -self.yaw_pid.compute(yaw_error)
 
@@ -147,7 +168,7 @@ class pid_controller(Node):
         angle_msg.data = float(commanded_angle)
         self.angle_pub.publish(angle_msg)
 
-        vel_error = self.target_vel - self.current_vel
+        vel_error = self.target_vel - current_vel
         self.u_thrust = self.vel_pid.compute(vel_error)
         commanded_thrust = max(min(self.u_thrust, self.max_thrust), self.min_thrust)
 
@@ -159,10 +180,10 @@ class pid_controller(Node):
         if self.log_counter % 100 == 0:
             self.get_logger().info(
                 f"Yaw Ref: {math.degrees(target_yaw):.1f}° | "
-                f"Yaw: {math.degrees(self.current_yaw):.1f}° | "
+                f"Yaw: {math.degrees(current_yaw):.1f}° | "
                 f"Angle Cmd: {commanded_angle:.2f} rad || "
                 f"Vel Ref: {self.target_vel:.1f} m/s | "
-                f"Vel: {self.current_vel:.2f} m/s | "
+                f"Vel: {current_vel:.2f} m/s | "
                 f"Thrust Cmd: {commanded_thrust:.0f} N"
             )
 
@@ -198,15 +219,47 @@ class pid_controller(Node):
 
         self.has_gps = True
 
+    def odometry_callback(self, msg):
+        """Update boat state from map-frame odometry when it is available."""
+        if msg.header.frame_id != "map":
+            self.get_logger().warn(
+                f"Ignoring boat odometry in unexpected frame: {msg.header.frame_id}"
+            )
+            return
+
+        pose = msg.pose.pose
+        self.odom_x = pose.position.x
+        self.odom_y = pose.position.y
+        x, y, z, w = (
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w,
+        )
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        self.odom_yaw = math.atan2(siny_cosp, cosy_cosp)
+        self.odom_vel = msg.twist.twist.linear.x
+        self.has_odometry = True
+
     def waypoint_callback(self, msg):
         """Update target waypoint coordinates and reset PID states."""
-        if len(msg.poses) > 0:
-            self.target_x = msg.poses[0].position.x
-            self.target_y = msg.poses[0].position.y
-            self.has_waypoint = True
-
+        if not msg.poses:
+            self.has_waypoint = False
+            self.target_vel = 0.0
             self.yaw_pid.reset()
             self.vel_pid.reset()
+            self.angle_pub.publish(Float64(data=0.0))
+            self.thrust_pub.publish(Float64(data=0.0))
+            return
+
+        if not self.has_waypoint or msg.header.frame_id != self.target_frame_id:
+            self.yaw_pid.reset()
+            self.vel_pid.reset()
+        self.target_x = msg.poses[0].position.x
+        self.target_y = msg.poses[0].position.y
+        self.target_frame_id = msg.header.frame_id
+        self.has_waypoint = True
 
     def vel_callback(self, msg):
         """Update target velocity setpoint."""

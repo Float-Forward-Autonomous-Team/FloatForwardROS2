@@ -31,6 +31,7 @@ setup(
             "gazebo_obstacles = boat.navigation.simulation.gazebo_obstacles:main",
             "navigation_monitor = boat.navigation.navigation_monitor:main",
             "astar_navigation = boat.navigation.planning.astar_navigation:main",
+            "local_spline_guidance = boat.navigation.planning.local_spline_guidance:main",
             "mission_manager = boat.navigation.mission_manager:main",
             "pid_controller = boat.pid_controller:main",
         ],

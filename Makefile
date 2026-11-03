@@ -36,6 +36,7 @@ colcon: up  ## rosdep install + colcon build inside the container
 # in /ws instead of littering the bind-mounted repo. apply_boat_params then writes
 # our hull/drag/thrust/sensor values (BOAT_PARAMS) over the stock WAM-V ones in the URDF.
 # apply_environment does the same for wind and waves (ENVIRONMENT), into a copy of the world.
+
 vrx: up  ## launch a VRX world with our single-engine WAM-V (needs `make colcon` first); override with WORLD=<name>/HEADLESS=True/THRUSTER_YAML=<path>/SENSOR_YAML=<path>/BOAT_PARAMS=<path>/ENVIRONMENT=<path>
 	docker compose exec ros bash -lc "$(ROS_ENV) && \
 		cp $(THRUSTER_YAML) /ws/thrusters.yaml && \
@@ -43,8 +44,9 @@ vrx: up  ## launch a VRX world with our single-engine WAM-V (needs `make colcon`
 		ros2 launch vrx_gazebo generate_wamv.launch.py thruster_yaml:=/ws/thrusters.yaml component_yaml:=/ws/sensors.yaml wamv_target:=/ws/wamv.urdf && \
 		python3 /ws/src/boat/scripts/apply_boat_params.py $(BOAT_PARAMS) /ws/wamv.urdf $(BOAT_PARAM_FLAGS) && \
 		python3 /ws/src/boat/scripts/apply_environment.py $(ENVIRONMENT) $(WORLD) /ws/worlds $(ENVIRONMENT_FLAGS) && \
-		export GZ_SIM_RESOURCE_PATH=/ws/install/share:/ws/install/wamv_description/share:/ws/install/wamv_gazebo/share:\$${GZ_SIM_RESOURCE_PATH:-} && \
+		export GZ_SIM_RESOURCE_PATH=/ws/install/share/vrx_gz/models:/ws/install/share/vrx_gazebo/models:/ws/install/share:/ws/install/wamv_description/share:/ws/install/wamv_gazebo/share:\$${GZ_SIM_RESOURCE_PATH:-} && \
 		ros2 launch vrx_gz competition.launch.py world:=/ws/worlds/$(WORLD) headless:=$(HEADLESS) urdf:=/ws/wamv.urdf"
+
 
 vrx-nav: SENSOR_YAML = /ws/src/boat/boat/config/wamv_navigation_sensors.yaml
 vrx-nav: BOAT_PARAM_FLAGS = --allow-missing-perception-sensors
