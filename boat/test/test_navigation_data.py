@@ -3,6 +3,7 @@
 import math
 
 from boat.navigation.planning.grid_astar import astar, cell_center, world_to_cell
+from boat.navigation.planning.path_smoothing import check_safety_margin
 from boat.navigation.simulation.obstacle_trajectory import MovingObstacle
 from boat.navigation.simulation.scenario_map import ScenarioMap
 
