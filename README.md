@@ -92,6 +92,92 @@ simulated and real sensors.
 [ROS_CHEATSHEET.md](documentation/ROS_CHEATSHEET.md) is the quick reference: every topic, message
 type and node.
 
+### Foxglove (viewing the boat's sensors)
+
+[Foxglove](https://foxglove.dev/) shows live ROS topics: camera images, the lidar point
+cloud, the GPS position and plots. It runs on your own computer and connects to
+`foxglove_bridge`, which runs inside the container and streams the topics over a
+WebSocket on port 8765.
+
+**First time only.** The bridge is installed in the Docker image, so rebuild the image and
+the workspace:
+
+```bash
+make build     # installs foxglove_bridge and foxglove_msgs
+make down      # the next `make` command then starts a container from the new image
+make colcon    # registers the new nodes
+```
+
+If `make colcon` complains about `--merge-install`, your build volumes come from an older
+build. Run `make clean`, then `make colcon` again.
+
+**Every time.** Use two terminals:
+
+```bash
+make vrx WORLD=sydney_regatta   # terminal 1: the simulator; wait until the boat has spawned
+make race                       # terminal 2: foxglove_bridge plus the nodes the dashboard uses
+```
+
+`sydney_regatta` has no task, so the boat stays pinned to its start platform until `make race`
+releases it. Start `make race` soon after the boat appears, because the release only happens
+during the driver's first few seconds.
+
+**Warning:** `make race` also runs `circle_driver`, which frees the boat and drives it in
+circles. If you want to look at the sensors with the boat left alone, run `make foxglove` in
+terminal 2 instead. It starts only the bridge. Add `make obstacles` in a third terminal to get
+the ground-truth markers.
+
+**Connect Foxglove:**
+
+1. Install the [Foxglove desktop app](https://foxglove.dev/download) on your computer (not in
+   the container).
+2. Choose **Open connection**, then **Foxglove WebSocket**, and enter `ws://localhost:8765`.
+3. Import the team layout from the **Layouts** menu: **Import from file**, then pick
+   `foxglove/dashboard_layout.json` from this repo. You only need to do this once.
+
+The layout has four tabs:
+
+| Tab           | What it shows                                                         |
+|---------------|-----------------------------------------------------------------------|
+| `Race`        | Front left camera, 3D view, GPS map, engine thrust and angle          |
+| `Camera`      | Front left and front right cameras side by side                       |
+| `LiDAR`       | Point cloud with obstacle markers, far left camera                    |
+| `Boat status` | GPS map, VRX task info, plots of thrust, IMU and wind                 |
+
+**For perception work.** Use these topics:
+
+| Topic                                                                  | Type                         |
+|------------------------------------------------------------------------|------------------------------|
+| `/wamv/sensors/cameras/front_left_camera_sensor/optical/image_raw`     | `sensor_msgs/msg/Image`      |
+| `/wamv/sensors/cameras/front_right_camera_sensor/optical/image_raw`    | `sensor_msgs/msg/Image`      |
+| `/wamv/sensors/cameras/far_left_camera_sensor/optical/image_raw`       | `sensor_msgs/msg/Image`      |
+| `/wamv/sensors/lidars/lidar_wamv_sensor/points`                        | `sensor_msgs/msg/PointCloud2`|
+| `/obstacles/markers` (simulation only: Gazebo's true obstacle positions) | `visualization_msgs/msg/MarkerArray` |
+
+`/obstacles/markers` is ground truth, so you can compare your detections against it. It only
+exists in simulation. Any topic your own node publishes shows up in Foxglove automatically,
+so you can add it to a panel without changing the bridge.
+
+**The other commands:**
+
+```bash
+make foxglove   # only foxglove_bridge
+make obstacles  # only the ground-truth obstacle markers
+make circles    # only the circle driver; change it with THRUST=<newtons> STEER=<radians>
+make track      # only the GPS track, as GeoJSON on /gps_track for a Map panel
+make race THRUST=800 STEER=0.2   # all of it, with a different circle
+```
+
+**If something doesn't work:**
+
+- **`port is already allocated`:** another container is using port 6080 or 8765, often a second
+  copy of this repo. Find it with `docker ps` and stop it first.
+- **Foxglove can't connect:** make sure `make race` or `make foxglove` is still running. Only
+  one bridge can use the port, so don't run both at once.
+- **`Package 'foxglove_bridge' not found`:** the container uses the old image. Run the
+  first-time steps above.
+- **`foxglove_msgs` or `obstacle_truth` errors after switching branches:** run `make colcon`.
+
 ## Repo layout
 
 ```
@@ -108,6 +194,7 @@ FloatForwardROS2/
 ├── documentation/
 │   ├── SIMULATION.md          how the VRX simulation works
 │   └── ROS_CHEATSHEET.md      every topic, message type and node
+├── foxglove/                  dashboard_layout.json, the team's Foxglove layout
 ├── scripts/                   helper scripts run by the Makefile (apply_boat_params.py, apply_environment.py)
 └── boat/                      ROS 2 package (ament_python)
     ├── package.xml            dependencies + build type
