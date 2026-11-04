@@ -1,4 +1,4 @@
-.PHONY: build up sh colcon vrx down clean
+.PHONY: build up sh colcon vrx foxglove obstacles circles track race down clean
 
 WORLD ?= stationkeeping_task
 HEADLESS ?= False
@@ -16,8 +16,11 @@ ROS_ENV = source /opt/ros/jazzy/setup.bash && { [ -f /ws/install/setup.bash ] &&
 build:   ## build the docker image
 	docker compose build
 
+# --no-recreate: every target below runs `up` first, and a recreate would kill whatever
+# is running in the container (e.g. `make race` killing `make vrx` with error 137).
+# so after `make build`, run `make down` once to pick up the new image.
 up:      ## start the container in the background (Gazebo GUI stack starts automatically)
-	docker compose up -d
+	docker compose up -d --no-recreate
 
 sh: up   ## open a shell in the running container
 	docker compose exec ros bash
@@ -42,6 +45,28 @@ vrx: up  ## launch a VRX world with our single-engine WAM-V (needs `make colcon`
 		python3 /ws/src/boat/scripts/apply_boat_params.py $(BOAT_PARAMS) /ws/wamv.urdf && \
 		python3 /ws/src/boat/scripts/apply_environment.py $(ENVIRONMENT) $(WORLD) /ws/worlds && \
 		ros2 launch vrx_gz competition.launch.py world:=/ws/worlds/$(WORLD) headless:=$(HEADLESS) urdf:=/ws/wamv.urdf"
+
+foxglove: up  ## start foxglove_bridge on ws://localhost:8765 (run alongside `make vrx`)
+	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 launch foxglove_bridge foxglove_bridge_launch.xml"
+
+# simulation only: Gazebo's true obstacle positions as markers on /obstacles/markers
+obstacles: up  ## publish ground-truth obstacle markers for Foxglove (run alongside `make vrx`)
+	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 run boat obstacle_truth"
+
+THRUST ?= 600.0
+STEER ?= 0.3
+
+# placeholder race stage: constant thrust (N) and engine angle (rad); also frees the boat from its start platform
+circles: up  ## drive the boat in circles (run alongside `make vrx`); override with THRUST=<N>/STEER=<rad>
+	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 run boat circle_driver --ros-args -p thrust:=$(THRUST) -p steer:=$(STEER)"
+
+# one terminal for the whole dashboard side: foxglove_bridge + circle_driver + gps_track + obstacle_truth.
+# replaces running `make foxglove`, `make circles`, `make track` and `make obstacles` separately.
+race: up  ## run a race stage with the Foxglove dashboard (start `make vrx` first); override with THRUST=<N>/STEER=<rad>
+	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 launch boat race.launch.py thrust:=$(THRUST) steer:=$(STEER)"
+
+track: up  ## publish the boat's GPS track as GeoJSON on /gps_track for Foxglove's Map panel
+	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 run boat gps_track"
 
 down:    ## stop the container (build/install/log volumes kept)
 	docker compose down
