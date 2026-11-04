@@ -95,8 +95,8 @@ type and node.
 ### Foxglove (viewing the boat's sensors)
 
 [Foxglove](https://foxglove.dev/) shows live ROS topics: camera images, the lidar point
-cloud, the GPS position and plots. It runs on your own computer and connects to
-`foxglove_bridge`, which runs inside the container and streams the topics over a
+cloud, the GPS position and plots. It runs in your browser, with nothing to install, and
+connects to `foxglove_bridge`, which runs inside the container and streams the topics over a
 WebSocket on port 8765.
 
 **First time only.** The bridge is installed in the Docker image, so rebuild the image and
@@ -129,8 +129,9 @@ the ground-truth markers.
 
 **Connect Foxglove:**
 
-1. Install the [Foxglove desktop app](https://foxglove.dev/download) on your computer (not in
-   the container).
+1. Open [app.foxglove.dev](https://app.foxglove.dev) in your browser and sign in if it asks you
+   to. If your browser won't connect, use the
+   [desktop app](https://foxglove.dev/download) instead; the steps are the same.
 2. Choose **Open connection**, then **Foxglove WebSocket**, and enter `ws://localhost:8765`.
 3. Import the team layout from the **Layouts** menu: **Import from file**, then pick
    `foxglove/dashboard_layout.json` from this repo. You only need to do this once.
