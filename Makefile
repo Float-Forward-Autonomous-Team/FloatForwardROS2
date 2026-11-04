@@ -1,4 +1,4 @@
-.PHONY: build up sh colcon vrx foxglove obstacles circles track race down clean
+.PHONY: build up sh colcon vrx foxglove obstacles circles track race live down clean
 
 WORLD ?= stationkeeping_task
 HEADLESS ?= False
@@ -64,6 +64,10 @@ circles: up  ## drive the boat in circles (run alongside `make vrx`); override w
 # replaces running `make foxglove`, `make circles`, `make track` and `make obstacles` separately.
 race: up  ## run a race stage with the Foxglove dashboard (start `make vrx` first); override with THRUST=<N>/STEER=<rad>
 	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 launch boat race.launch.py thrust:=$(THRUST) steer:=$(STEER)"
+
+# runs on the Mac, not in the container: the public live page prototype, a static page that reads foxglove_bridge directly
+live:    ## serve the public live page on http://localhost:8090 (AI tab needs `make race`)
+	python3 -m http.server 8090 --bind 127.0.0.1 --directory live
 
 track: up  ## publish the boat's GPS track as GeoJSON on /gps_track for Foxglove's Map panel
 	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 run boat gps_track"

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Float Forward Live</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M5 2h3L6 14H3zM10 2h3l-2 12H8z' fill='%23b0151d'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "@foxglove/ws-protocol": "https://esm.sh/@foxglove/ws-protocol@0.8.0",
+        "@foxglove/rosmsg": "https://esm.sh/@foxglove/rosmsg@5.0.5",
+        "@foxglove/rosmsg2-serialization": "https://esm.sh/@foxglove/rosmsg2-serialization@3.1.2"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <a class="brand" href="./" aria-label="DTU Float Forward">
+        <svg class="mark" viewBox="0 0 20 28" aria-hidden="true"><path d="M6 0h5L5 28H0zM15 0h5l-6 28H9z"/></svg>
+        <span class="wordmark">Float Forward<small>DTU student team</small></span>
+      </a>
+      <nav class="nav" aria-label="Views">
+        <button class="nav-item" id="nav-map" data-view="map" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14"/></svg>Map
+        </button>
+        <button class="nav-item" id="nav-cameras" data-view="cameras">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"/></svg>Cameras
+        </button>
+        <button class="nav-item" id="nav-performance" data-view="performance">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>Performance
+        </button>
+      </nav>
+      <p class="side-note bottom">A read-only page. It shows where our boats are and what they see. Nothing here can send a command to a boat.</p>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <svg class="mark mark-small" viewBox="0 0 20 28" aria-hidden="true"><path d="M6 0h5L5 28H0zM15 0h5l-6 28H9z"/></svg>
+        <div class="boat-line">
+          <span class="boat-name" id="boat-name">Energy boat</span>
+          <span class="pill" id="status">Replay</span>
+          <span class="stamp num" id="stamp"></span>
+        </div>
+        <div class="switcher">
+          <div class="segmented" role="group" aria-label="Boat">
+            <button id="boat-energy" data-boat="energy" aria-pressed="true">Energy</button>
+            <button id="boat-ai" data-boat="ai" aria-pressed="false">USV-01</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="canvas">
+        <!-- Map: where is the boat and how fast is it going? -->
+        <section class="view" id="view-map" aria-labelledby="map-title">
+          <div class="title-row">
+            <div>
+              <h1 id="map-title">Monaco harbour</h1>
+              <p class="sub" id="map-sentence">Loading the race data…</p>
+            </div>
+            <div class="actions" id="energy-actions">
+              <label class="sr" for="e-race">Race</label>
+              <select class="input" id="e-race"></select>
+              <div class="segmented" role="group" aria-label="Replay speed" id="e-rate">
+                <button data-rate="1" aria-pressed="false">1×</button>
+                <button data-rate="10" aria-pressed="true">10×</button>
+                <button data-rate="60" aria-pressed="false">60×</button>
+              </div>
+              <button class="btn primary" id="e-play">Pause</button>
+            </div>
+            <div class="actions" id="ai-actions" hidden>
+              <button class="btn primary" id="go-cameras">Watch the camera</button>
+            </div>
+          </div>
+
+          <div class="grid map-row">
+            <div class="panel map-panel">
+              <header>
+                <div class="chips" role="group" aria-label="Map layers">
+                  <button class="chip" id="chip-chart" data-layer="chart" aria-pressed="true"><span class="key key-chart"></span>Harbour map</button>
+                  <button class="chip" id="chip-recent" data-layer="recent" aria-pressed="true"><span class="key key-recent"></span>Last 10 minutes</button>
+                  <button class="chip" id="chip-past" data-layer="past" aria-pressed="true"><span class="key key-past"></span>Earlier</button>
+                  <button class="chip" id="chip-objects" data-layer="objects" aria-pressed="true" hidden><span class="key key-objects"></span>Objects</button>
+                  <button class="chip" id="chip-fov" data-layer="fov" aria-pressed="true" hidden><span class="key key-fov"></span>Camera view</button>
+                </div>
+              </header>
+              <div class="map" id="map">
+                <canvas id="map-canvas" aria-label="Chart of the boat's position and track, north up, in metres"></canvas>
+                <div class="map-tools">
+                  <button id="m-follow" aria-pressed="true" title="Follow the boat" aria-label="Follow the boat">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 19 20 12 16 5 20z"/></svg>
+                  </button>
+                  <button id="m-in" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+                  <button id="m-out" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+                  <button id="m-full" title="Full screen" aria-label="Full screen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+                </div>
+                <p class="map-credit" id="map-credit" hidden>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</p>
+                <p class="map-empty" id="map-empty">Waiting for the boat's position…</p>
+              </div>
+            </div>
+
+            <div class="side">
+              <dl class="kpis readouts">
+                <div class="kpi lead"><dt class="kpi-label">Speed over ground</dt><dd class="kpi-value" id="r-sog"><span class="quiet">—</span></dd></div>
+                <div class="kpi"><dt class="kpi-label">Heading</dt><dd class="kpi-value" id="r-hdg"><span class="quiet">—</span></dd></div>
+                <div class="kpi"><dt class="kpi-label">Distance sailed</dt><dd class="kpi-value" id="r-dist"><span class="quiet">—</span></dd></div>
+                <div class="kpi"><dt class="kpi-label" id="r-4-label">Run progress</dt><dd class="kpi-value" id="r-4"><span class="quiet">—</span></dd></div>
+              </dl>
+
+              <div class="panel fill" id="run-panel">
+                <header><h2>This run</h2></header>
+                <dl class="facts">
+                  <div><dt>Date</dt><dd id="f-date"><span class="quiet">—</span></dd></div>
+                  <div><dt>On the water</dt><dd class="num" id="f-window"><span class="quiet">—</span></dd></div>
+                  <div><dt>Recorded time</dt><dd class="num" id="f-duration"><span class="quiet">—</span></dd></div>
+                  <div><dt>Run length</dt><dd class="num" id="f-length"><span class="quiet">—</span></dd></div>
+                  <div><dt>Top speed</dt><dd class="num" id="f-top"><span class="quiet">—</span></dd></div>
+                </dl>
+                <p class="foot">Replayed from our Monaco 2026 telemetry. The page goes live once the read-only feed from the boat is running.</p>
+              </div>
+
+              <div class="panel fill" id="around-panel" hidden>
+                <header><h2>Around the boat</h2><span class="meta">within 100 m</span></header>
+                <ul class="rows" id="around"></ul>
+                <p class="foot">Positions come from the simulator until the AI model runs on the boat.</p>
+              </div>
+            </div>
+
+            <div class="panel signal-panel" id="signal-panel">
+              <header>
+                <h2>Signal from the boat</h2>
+                <span class="meta" id="signal-meta">—</span>
+              </header>
+              <div class="strip" id="strip" role="slider" tabindex="0" aria-label="Replay position" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0">
+                <canvas id="strip-canvas"></canvas>
+              </div>
+              <div class="strip-times num"><span id="strip-start">—</span><span id="strip-now">—</span><span id="strip-end">—</span></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Cameras: what does the boat see? -->
+        <section class="view" id="view-cameras" aria-labelledby="cam-title" hidden>
+          <div class="title-row">
+            <div>
+              <h1 id="cam-title">Cameras</h1>
+              <p class="sub" id="cam-sentence">What USV-01 sees, with the AI's detections drawn on top.</p>
+            </div>
+            <div class="actions" id="cam-actions">
+              <div class="segmented" role="group" aria-label="Camera">
+                <button data-camera="front_left" aria-pressed="true">Front left</button>
+                <button data-camera="front_right" aria-pressed="false">Front right</button>
+                <button data-camera="far_left" aria-pressed="false">Far left</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid cam-row" id="cam-ai">
+            <div class="panel cam-panel">
+              <div class="frame">
+                <canvas id="cam"></canvas><canvas id="cam-overlay"></canvas>
+                <p class="frame-empty" id="cam-empty">Waiting for the camera…</p>
+              </div>
+            </div>
+            <div class="side">
+              <dl class="kpis readouts two">
+                <div class="kpi"><dt class="kpi-label">AI detections</dt><dd class="kpi-value" id="c-det"><span class="quiet">—</span></dd></div>
+                <div class="kpi"><dt class="kpi-label">Nearest object</dt><dd class="kpi-value" id="c-near"><span class="quiet">—</span></dd></div>
+              </dl>
+              <div class="panel fill">
+                <header><h2>Around the boat</h2><span class="meta">within 100 m</span></header>
+                <ul class="rows" id="around-cam"></ul>
+                <p class="foot">Boxes appear on the image once the detection model publishes them. Until then, positions come from the simulator.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" id="cam-energy" hidden>
+            <div class="empty-state">
+              <p><strong>The Energy boat carries no camera.</strong> USV-01, our autonomous boat, streams three cameras and what its AI sees in them.</p>
+              <button class="btn" id="go-ai">Show USV-01</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Performance: how fast, and how well did the link hold? -->
+        <section class="view" id="view-performance" aria-labelledby="perf-title" hidden>
+          <div class="title-row">
+            <div>
+              <h1 id="perf-title">Performance</h1>
+              <p class="sub" id="perf-sentence">—</p>
+            </div>
+          </div>
+
+          <dl class="kpis">
+            <div class="kpi"><dt class="kpi-label" id="p1-label">Top speed</dt><dd class="kpi-value" id="p1"><span class="quiet">—</span></dd></div>
+            <div class="kpi"><dt class="kpi-label" id="p2-label">Average while moving</dt><dd class="kpi-value" id="p2"><span class="quiet">—</span></dd></div>
+            <div class="kpi"><dt class="kpi-label" id="p3-label">Signal heard</dt><dd class="kpi-value" id="p3"><span class="quiet">—</span></dd></div>
+            <div class="kpi"><dt class="kpi-label" id="p4-label">Time on the water</dt><dd class="kpi-value" id="p4"><span class="quiet">—</span></dd></div>
+          </dl>
+
+          <div class="grid perf-row">
+            <div class="panel chart-panel">
+              <div class="chart-head"><h3 id="chart-title">Speed over the run, knots</h3><span class="meta" id="chart-meta"></span></div>
+              <div class="chart" id="chart"></div>
+            </div>
+            <div class="panel fill" id="objects-panel" hidden>
+              <header><h2>Objects passed</h2><span class="meta">this session</span></header>
+              <ul class="rows" id="passed"></ul>
+              <p class="foot">Closest distance from the boat. Positions come from the simulator until the AI model runs.</p>
+            </div>
+          </div>
+
+          <div class="panel" id="races-panel">
+            <header><h2>Monaco race week, July 2026</h2><span class="meta">choose a run to replay it</span></header>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Date</th><th>Run</th><th class="n">Recorded</th><th class="n">Distance</th><th class="n">Top speed</th><th class="n">Average moving</th><th class="n">Signal heard</th></tr></thead>
+                <tbody id="races"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <nav class="tabbar" aria-label="Views">
+    <button id="tab-cameras" data-view="cameras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"/></svg>Cameras</button>
+    <button id="tab-map" data-view="map" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14"/></svg>Map</button>
+    <button id="tab-performance" data-view="performance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>Performance</button>
+  </nav>
+
+  <script src="charts.js"></script>
+  <script type="module" src="live.js"></script>
+</body>
+</html>
