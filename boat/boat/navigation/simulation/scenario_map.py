@@ -2,11 +2,13 @@
 
 This reads the same SDF and cached model assets that Gazebo loads. It does not
 infer navigability from visual colours. Plane collisions (the water / seabed)
-are ignored; shore and object collision footprints are occupied.
+are ignored; shore and object collision footprints are occupied. Each
+top-level model with a footprint is also recorded as a landmark.
 """
 
 import math
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -47,6 +49,18 @@ def _float_list(text):
     return [float(item) for item in text.split()]
 
 
+@dataclass(frozen=True)
+class Landmark:
+    """A top-level world model: its name, model type, origin, yaw and footprint radius."""
+
+    name: str
+    model: str
+    x: float
+    y: float
+    yaw: float
+    radius_m: float
+
+
 class ScenarioMap:
     """Build a bounded 2D grid from world and model collision geometry."""
 
@@ -63,6 +77,8 @@ class ScenarioMap:
         self.image = Image.new("L", (self.width, self.height), 0)
         self.draw = ImageDraw.Draw(self.image)
         self.collision_count = 0
+        self.landmarks = []
+        self._footprint = None
 
     def _pixel(self, x, y):
         return (
@@ -72,18 +88,12 @@ class ScenarioMap:
 
     def _polygon(self, points):
         self.draw.polygon([self._pixel(x, y) for x, y, _ in points], fill=100)
+        if self._footprint is not None:
+            self._footprint.extend((x, y) for x, y, _ in points)
 
-    def draw_circle(self, image, x, y, radius):
-        """Draw a moving object's footprint on a copy of the static map."""
-        draw = ImageDraw.Draw(image)
-        px, py = self._pixel(x, y)
-        radius_px = max(0.5, radius / self.resolution)
-        draw.ellipse((px - radius_px, py - radius_px, px + radius_px, py + radius_px), fill=100)
-
-    def values(self, image=None):
+    def values(self):
         """Return occupancy values in ROS bottom-left-first row order."""
-        image = image if image is not None else self.image
-        return list(image.transpose(Image.Transpose.FLIP_TOP_BOTTOM).tobytes())
+        return list(self.image.transpose(Image.Transpose.FLIP_TOP_BOTTOM).tobytes())
 
     def _resolve_model(self, uri, base_dir):
         uri = uri.strip()
@@ -126,11 +136,32 @@ class ScenarioMap:
         if world is None:
             raise ValueError(f"No <world> in {world_path}")
         for include in world.findall("include"):
-            self._include(include, _identity(), world_path.parent)
+            self._footprint = []
+            matrix, model = self._include(include, _identity(), world_path.parent)
+            model_type = include.findtext("uri").strip().rstrip("/").rsplit("/", 1)[-1]
+            self._add_landmark(include.findtext("name") or model.get("name"), model_type, matrix)
         for model in world.findall("model"):
-            self._model(model, _identity(), world_path.parent)
+            self._footprint = []
+            matrix = self._model(model, _identity(), world_path.parent)
+            self._add_landmark(model.get("name"), model.get("name"), matrix)
+        self._footprint = None
         if not self.collision_count:
             raise ValueError(f"No supported collision geometry found in {world_path}")
+
+    def _add_landmark(self, name, model_type, matrix):
+        if not self._footprint:
+            return
+        x, y = matrix[0][3], matrix[1][3]
+        self.landmarks.append(
+            Landmark(
+                name=name.strip(),
+                model=model_type,
+                x=x,
+                y=y,
+                yaw=math.atan2(matrix[1][0], matrix[0][0]),
+                radius_m=max(math.hypot(px - x, py - y) for px, py in self._footprint),
+            )
+        )
 
     def _include(self, include, parent, base_dir):
         uri = include.findtext("uri")
@@ -138,7 +169,7 @@ class ScenarioMap:
         model = ET.parse(model_path).getroot().find("model")
         if model is None:
             raise ValueError(f"No <model> in {model_path}")
-        self._model(model, parent, model_path.parent, include.findtext("pose"))
+        return self._model(model, parent, model_path.parent, include.findtext("pose")), model
 
     def _model(self, model, parent, base_dir, override_pose=None):
         matrix = _multiply(
@@ -155,6 +186,7 @@ class ScenarioMap:
             self._model(child, matrix, base_dir)
         for include in model.findall("include"):
             self._include(include, matrix, base_dir)
+        return matrix
 
     def _geometry(self, geometry, matrix, base_dir):
         if geometry.find("plane") is not None:

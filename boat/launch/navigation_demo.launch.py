@@ -1,4 +1,4 @@
-"""Launch simulator truth inputs, a demo goal, and a visible A* route."""
+"""Launch simulated inputs, the world model, a demo goal, and the global planner."""
 
 from pathlib import Path
 
@@ -12,6 +12,8 @@ from launch_ros.actions import Node
 def generate_launch_description():
     """Use the already running VRX wayfinding world as the truth source."""
     package_share = Path(get_package_share_directory("boat"))
+    world_sdf = LaunchConfiguration("world_sdf")
+    obstacles_file = LaunchConfiguration("obstacles_file")
     return LaunchDescription(
         [
             DeclareLaunchArgument("world_sdf", default_value="/ws/worlds/wayfinding_task.sdf"),
@@ -26,8 +28,8 @@ def generate_launch_description():
                 parameters=[
                     {
                         "use_sim_time": True,
-                        "world_sdf": LaunchConfiguration("world_sdf"),
-                        "obstacles_file": LaunchConfiguration("obstacles_file"),
+                        "world_sdf": world_sdf,
+                        "obstacles_file": obstacles_file,
                     }
                 ],
                 output="screen",
@@ -39,10 +41,17 @@ def generate_launch_description():
                 parameters=[
                     {
                         "use_sim_time": True,
-                        "world_sdf": LaunchConfiguration("world_sdf"),
-                        "obstacles_file": LaunchConfiguration("obstacles_file"),
+                        "world_sdf": world_sdf,
+                        "obstacles_file": obstacles_file,
                     }
                 ],
+                output="screen",
+            ),
+            Node(
+                package="boat",
+                executable="world_model",
+                name="world_model",
+                parameters=[{"use_sim_time": True, "prior_world_sdf": world_sdf}],
                 output="screen",
             ),
             Node(
@@ -61,8 +70,8 @@ def generate_launch_description():
             ),
             Node(
                 package="boat",
-                executable="astar_navigation",
-                name="astar_navigation",
+                executable="global_planner",
+                name="global_planner",
                 parameters=[{"use_sim_time": True}],
                 output="screen",
             ),

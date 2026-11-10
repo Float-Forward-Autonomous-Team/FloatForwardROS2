@@ -76,8 +76,9 @@ boat, reducing rendering work. Pass `WORLD=<name>` to choose a different task
 world. Restart the VRX launch after switching profiles; `make build` is not
 needed for this YAML profile.
 
-The navigation demo adds a collision-derived occupancy grid, Gazebo GNSS
-velocity, physical moving obstacles, and a visible A* route to a demo goal.
+The navigation demo adds simulated Localization and Perception topics, a world
+model (collision-derived static map, moving objects, landmarks), physical
+moving obstacles, and a global A* route to a demo goal.
 After starting `wayfinding_task`, run
 `ros2 launch boat navigation_demo.launch.py` in a second container shell.
 It does not command the boat. See
@@ -121,7 +122,7 @@ FloatForwardROS2/
 ├── .github/workflows/test-pipeline.yml   CI: pre-commit + docker build + colcon build
 ├── documentation/
 │   ├── SIMULATION.md          how the VRX simulation works
-│   ├── NAVIGATION_INPUTS.md   simulator truth inputs and navigation demo
+│   ├── NAVIGATION_INPUTS.md   navigation demo: world model, global planner, topics
 │   └── ROS_CHEATSHEET.md      every topic, message type and node
 ├── scripts/                   helper scripts run by the Makefile (apply_boat_params.py, apply_environment.py)
 ├── boat_interfaces/           ROS messages for tracked navigation objects
@@ -132,7 +133,7 @@ FloatForwardROS2/
     ├── boat/
     │   ├── __init__.py
     │   ├── heartbeat.py       example node -> `ros2 run boat heartbeat`
-    │   └── navigation/        mission manager, monitor, planning/, simulation/
+    │   └── navigation/        mission manager, monitor, world_model/, planning/, simulation/
     ├── launch/                example and navigation demo launch files
     └── config/
         ├── params.yaml                  example parameters
@@ -150,8 +151,8 @@ FloatForwardROS2/
    ```python
    "<name> = boat.navigation.<module>:main",
    ```
-   Include the subpackage for code in `navigation/planning/` or
-   `navigation/simulation/`. For a module directly under `boat/boat/`, use
+   Include the subpackage for code in `navigation/world_model/`,
+   `navigation/planning/` or `navigation/simulation/`. For a module directly under `boat/boat/`, use
    `boat.<module>:main`.
 3. `make colcon`
 4. `make sh`, then `ros2 run boat <name>`
