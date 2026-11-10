@@ -3,6 +3,11 @@
 Moving objects are deliberately ignored here; they belong to the local planner.
 A stopped object reaches this planner when the world model adds it to the
 static map, which counts as a map update.
+
+Status goes up the chain: when the local planner reports that the end of this
+planner's path is reached, this planner reports the mission goal as reached on
+``/planning/global_status``. Whether that completes a task is for the mission
+manager to decide.
 """
 
 import math
@@ -11,6 +16,7 @@ from typing import NamedTuple
 
 import numpy as np
 import rclpy
+from boat_interfaces.msg import NavigationStatus
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rclpy.node import Node
@@ -18,6 +24,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 from boat.navigation.planning.grid_astar import astar, cell_center, step_costs, world_to_cell
 from boat.navigation.planning.path_geometry import distance_to_polyline
+from boat.navigation.status import STATUS_QOS, StatusReporter, same_goal
 from boat.navigation.world_model.layers import clearance_cells
 
 GOAL_TOLERANCE_M = 0.5
@@ -52,6 +59,7 @@ class GlobalPlanner(Node):
         self.plan = None
         self.path_points = None
         self.last_status = None
+        self.reached_goal = None
 
         latched = QoSProfile(
             depth=1,
@@ -62,6 +70,10 @@ class GlobalPlanner(Node):
         self.create_subscription(Odometry, "/localization/odometry", self._on_odometry, 10)
         self.create_subscription(PoseStamped, "/mission/goal", self._on_goal, 10)
         self.path_pub = self.create_publisher(Path, "/planning/global_path", latched)
+        self.create_subscription(
+            NavigationStatus, "/planning/local_status", self._on_local_status, STATUS_QOS
+        )
+        self.status = StatusReporter(self, "/planning/global_status")
         self.create_timer(1.0, self._tick)
         self.get_logger().info("Global planner started; no boat commands are published")
 
@@ -85,9 +97,41 @@ class GlobalPlanner(Node):
 
     def _on_goal(self, message):
         self.goal = message
+        if self.reached_goal is not None and not same_goal(
+            message.pose.position, self.reached_goal, GOAL_TOLERANCE_M
+        ):
+            self.reached_goal = None
+
+    def _goal_xy(self):
+        if self.goal is None:
+            return None
+        return (self.goal.pose.position.x, self.goal.pose.position.y)
+
+    def _on_local_status(self, message):
+        """Report the goal reached when the end of the current path is reached."""
+        goal_xy = self._goal_xy()
+        if (
+            message.state != NavigationStatus.SUCCEEDED
+            or self.path_points is None
+            or not same_goal(message.goal, self.path_points[-1], GOAL_TOLERANCE_M)
+            or math.dist(self.path_points[-1], goal_xy) > GOAL_TOLERANCE_M
+        ):
+            return
+        if self.reached_goal is None:
+            self.get_logger().info(f"Goal ({goal_xy[0]:.1f}, {goal_xy[1]:.1f}) reached")
+        self.reached_goal = goal_xy
+        self._report(NavigationStatus.SUCCEEDED, "Goal reached")
+
+    def _report(self, state, detail):
+        """Report on the current goal; once it is reached, keep reporting it reached."""
+        goal_xy = self._goal_xy()
+        if self.reached_goal is not None and goal_xy is not None:
+            state, detail = NavigationStatus.SUCCEEDED, "Goal reached"
+        self.status.report(state, goal_xy, detail)
 
     def _tick(self):
         if self.grid is None or self.odometry is None or self.goal is None:
+            self._report(NavigationStatus.IDLE, "Waiting for static map, odometry and goal")
             return
         info = self.grid.info
         frame = self.grid.header.frame_id
@@ -166,6 +210,7 @@ class GlobalPlanner(Node):
             self._publish([])
             self.get_logger().warn(f"No route ({reason}); search took {elapsed_ms:.0f} ms")
             self.last_status = "no route"
+            self._report(NavigationStatus.BLOCKED, "No route to the goal")
             return
         origin_x, origin_y = info.origin.position.x, info.origin.position.y
         points = [boat_xy]
@@ -177,6 +222,7 @@ class GlobalPlanner(Node):
         self._publish(points)
         self.get_logger().info(f"Planned {len(points)} points in {elapsed_ms:.0f} ms ({reason})")
         self.last_status = "planned"
+        self._report(NavigationStatus.ACTIVE, "Following route")
 
     def _clear(self, problem):
         """Withdraw the current path because the inputs do not allow planning."""
@@ -186,6 +232,7 @@ class GlobalPlanner(Node):
         self.plan = None
         self.path_points = None
         self.last_status = problem
+        self._report(NavigationStatus.BLOCKED, problem)
 
     def _publish(self, points):
         route = Path()

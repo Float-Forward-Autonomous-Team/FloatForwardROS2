@@ -5,6 +5,8 @@ import math
 
 import numpy as np
 
+from boat.navigation.world_model.layers import passable_cells
+
 
 def world_to_cell(x, y, origin_x, origin_y, resolution, width, height):
     """Return a grid cell for a map-frame point, or None outside the grid."""
@@ -37,7 +39,7 @@ def step_costs(clearance, min_clearance, safe_distance=0.0, proximity_weight=0.0
     costs = np.ones(clearance.shape)
     if safe_distance > 0 and proximity_weight > 0:
         costs += proximity_weight * np.clip((safe_distance - clearance) / safe_distance, 0.0, None)
-    costs[clearance < max(min_clearance, 1.0)] = math.inf
+    costs[~passable_cells(clearance, min_clearance)] = math.inf
     return costs.ravel().tolist()
 
 

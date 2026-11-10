@@ -1,69 +1,29 @@
-"""Simple occupancy-checked path simplification, spline sampling, and LOS targeting."""
+"""Collision-checked path simplification, spline sampling, and LOS targeting.
+
+Every check uses a `passable` mask from `world_model.layers.passable_cells`:
+a (height, width) boolean array in ROS row order, True where the boat may be.
+Guidance builds it with the same clearance rule as the global planner, so the
+smoothed path keeps the planner's margin from obstacles.
+"""
 
 import math
 
 
-# so that we avoid moving super close to docks
-
-
-def check_safety_margin(grid_data, width, height, row, col, resolution, safety_margin):
-    """Return whether the square clearance neighborhood is known and free."""
-    if (
-        width <= 0
-        or height <= 0
-        or len(grid_data) != width * height
-        or resolution <= 0
-        or not math.isfinite(resolution)
-    ):
-        return False
-    if safety_margin < 0 or not math.isfinite(safety_margin):
-        return False
-
-    radius_cells = safety_margin / resolution
-    col_left = math.floor(col - radius_cells)
-    col_right = math.ceil(col + radius_cells)
-    row_down = math.floor(row - radius_cells)
-    row_up = math.ceil(row + radius_cells)
-
-    if col_left < 0 or col_right >= width or row_down < 0 or row_up >= height:
-        return False
-
-    for i in range(row_down, row_up + 1):
-        for j in range(col_left, col_right + 1):
-            if grid_data[i * width + j] != 0:
-                return False
-    return True
-
-
-def _is_free(point, grid_data, width, height, origin_x, origin_y, resolution, safety_margin_m=3.0):
-    """Return whether a world point lies in a known free occupancy cell."""
+def _is_free(point, passable, origin_x, origin_y, resolution):
+    """Return whether a map-frame point lies in a passable cell."""
     if resolution <= 0 or not math.isfinite(resolution):
         return False
     x, y = point
     if not (math.isfinite(x) and math.isfinite(y)):
         return False
+    height, width = passable.shape
     col = math.floor((x - origin_x) / resolution)
     row = math.floor((y - origin_y) / resolution)
-    return (
-        0 <= col < width
-        and 0 <= row < height
-        and len(grid_data) == width * height
-        and check_safety_margin(grid_data, width, height, row, col, resolution, safety_margin_m)
-    )
+    return 0 <= col < width and 0 <= row < height and bool(passable[row, col])
 
 
-def _segment_is_free(
-    start,
-    end,
-    grid_data,
-    width,
-    height,
-    origin_x,
-    origin_y,
-    resolution,
-    safety_margin_m=3.0,
-):
-    """Sample a line at quarter-cell spacing and reject occupied or unknown cells."""
+def _segment_is_free(start, end, passable, origin_x, origin_y, resolution):
+    """Sample a line at quarter-cell spacing and reject points outside passable cells."""
     distance = math.dist(start, end)
     steps = max(1, math.ceil(distance / (resolution * 0.25)))
     for index in range(steps + 1):
@@ -72,62 +32,27 @@ def _segment_is_free(
             start[0] + fraction * (end[0] - start[0]),
             start[1] + fraction * (end[1] - start[1]),
         )
-        if not _is_free(
-            point,
-            grid_data,
-            width,
-            height,
-            origin_x,
-            origin_y,
-            resolution,
-            safety_margin_m,
-        ):
+        if not _is_free(point, passable, origin_x, origin_y, resolution):
             return False
     return True
 
 
-def _path_is_free(
-    points, grid_data, width, height, origin_x, origin_y, resolution, safety_margin_m=3.0
-):
+def _path_is_free(points, passable, origin_x, origin_y, resolution):
     """Validate all points and the sampled segments connecting them."""
     if not points or any(
-        not _is_free(
-            point,
-            grid_data,
-            width,
-            height,
-            origin_x,
-            origin_y,
-            resolution,
-            safety_margin_m,
-        )
-        for point in points
+        not _is_free(point, passable, origin_x, origin_y, resolution) for point in points
     ):
         return False
     return all(
-        _segment_is_free(
-            start,
-            end,
-            grid_data,
-            width,
-            height,
-            origin_x,
-            origin_y,
-            resolution,
-            safety_margin_m,
-        )
+        _segment_is_free(start, end, passable, origin_x, origin_y, resolution)
         for start, end in zip(points, points[1:])
     )
 
 
-def simplify_path(
-    points, grid_data, width, height, origin_x, origin_y, resolution, safety_margin_m=3.0
-):
-    """Remove route points only when a direct shortcut stays in free cells."""
+def simplify_path(points, passable, origin_x, origin_y, resolution):
+    """Remove route points only when a direct shortcut stays in passable cells."""
     route = [(float(point[0]), float(point[1])) for point in points]
-    if not _path_is_free(
-        route, grid_data, width, height, origin_x, origin_y, resolution, safety_margin_m
-    ):
+    if not _path_is_free(route, passable, origin_x, origin_y, resolution):
         return []
     if len(route) < 3:
         return route
@@ -137,15 +62,7 @@ def simplify_path(
     while anchor < len(route) - 1:
         candidate = len(route) - 1
         while candidate > anchor + 1 and not _segment_is_free(
-            route[anchor],
-            route[candidate],
-            grid_data,
-            width,
-            height,
-            origin_x,
-            origin_y,
-            resolution,
-            safety_margin_m,
+            route[anchor], route[candidate], passable, origin_x, origin_y, resolution
         ):
             candidate -= 1
         simplified.append(route[candidate])
@@ -186,20 +103,16 @@ def catmull_rom_spline(points, sample_spacing):
     return sampled
 
 
-def generate_safe_spline(
-    points, data, width, height, origin_x, origin_y, resolution, safety_margin_m=3.0
-):
+def generate_safe_spline(points, passable, origin_x, origin_y, resolution):
     """Smooth a simplified route; fall back to its collision-checked polyline."""
-    simplified = simplify_path(
-        points, data, width, height, origin_x, origin_y, resolution, safety_margin_m
-    )
+    simplified = simplify_path(points, passable, origin_x, origin_y, resolution)
     if not simplified:
         return []
     if len(simplified) < 3:
         return simplified
 
     spline = catmull_rom_spline(simplified, resolution * 0.5)
-    if _path_is_free(spline, data, width, height, origin_x, origin_y, resolution, safety_margin_m):
+    if _path_is_free(spline, passable, origin_x, origin_y, resolution):
         return spline
     return simplified
 

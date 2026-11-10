@@ -40,3 +40,12 @@ def clearance_cells(cells):
     """
     free = np.pad(cells == FREE, 1, constant_values=False)
     return distance_transform_edt(free)[1:-1, 1:-1]
+
+
+def passable_cells(clearance, min_clearance):
+    """Return a mask of cells the boat may occupy: free and at least `min_clearance` away.
+
+    `min_clearance` is in cells. The global planner and guidance both use this
+    rule, so a smoothed path can never enter a zone the planner forbids.
+    """
+    return clearance >= max(min_clearance, 1.0)

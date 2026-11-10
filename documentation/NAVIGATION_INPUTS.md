@@ -21,7 +21,7 @@ make sh
 ros2 launch boat navigation_demo.launch.py
 ```
 
-The launch starts eight small processes:
+The launch starts nine small processes:
 
 - `gazebo_obstacles` spawns visible, collidable spheres and moves them along
   trajectories in `boat/config/moving_obstacles.yaml`.
@@ -30,11 +30,15 @@ The launch starts eight small processes:
 - `world_model` builds the static map and splits Perception objects into
   stopped (static) and moving ones.
 - `navigation_monitor` subscribes and prints a one-second input summary.
-- `mission_manager` publishes the demo goal at `(-593, 241)` in the `map` frame.
+- `mission_manager` publishes the demo goal at `(-593, 241)` in the `map` frame
+  and moves to the next task when the global planner reports it reached.
 - `global_planner` publishes `/planning/global_path` (`nav_msgs/msg/Path`),
   replanning only when something relevant changes.
-- `local_spline_guidance` smooths the global path and publishes a lookahead
-  target point and a target speed once a second; it stops the boat at the goal.
+- `local_planner` is a placeholder: it forwards the global path to guidance and
+  guidance's status to the global planner, unchanged.
+- `local_spline_guidance` smooths the local path and publishes a lookahead
+  target point and a target speed once a second; it stops the boat at the end
+  of the path.
 - `pid_controller` (Control) turns the target point and speed into engine angle
   and thrust commands for the single WAM-V engine.
 
@@ -48,13 +52,18 @@ world SDF (prior) ────────────────────�
                        /world_model/static_map ────┴──► global_planner, local_spline_guidance
                        /world_model/moving_objects  (local planner, later)
                        /world_model/landmarks       (task planner, later)
-mission_manager ──► /mission/goal ──► global_planner ──► /planning/global_path
-                                                                        │
-                                                        local_spline_guidance
-                                                                        │
-                          /guidance/target_position, /guidance/target_velocity
-                                                                        │
-                                                pid_controller ──► /wamv/thrusters/main/{pos,thrust}
+
+ commands go down                                status goes up
+ ────────────────                                ──────────────
+ mission_manager
+   │ /mission/goal                               ▲ /planning/global_status
+ global_planner
+   │ /planning/global_path                       ▲ /planning/local_status
+ local_planner (placeholder: forwards both ways)
+   │ /planning/local_path                        ▲ /guidance/status
+ local_spline_guidance
+   │ /guidance/target_position, /guidance/target_velocity
+ pid_controller ──► /wamv/thrusters/main/{pos,thrust}
 ```
 
 Planners read only Localization, world model and mission topics. Replacing
@@ -72,7 +81,9 @@ The Python code lives in `boat/boat/navigation/`, grouped by responsibility:
 | `world_model/world_model.py` | Prior map + Perception objects → static map, moving objects, landmarks |
 | `world_model/layers.py` | Paint obstacles into grids; clearance (distance) field shared by planners |
 | `world_model/objects.py` | Constant-velocity prediction; stopped-object promotion rule |
+| `status.py` | Shared status message helpers: latched QoS, publish-on-change, goal matching |
 | `planning/global_planner.py` | Subscribe to the static map, boat pose and goal; publish a path |
+| `planning/local_planner.py` | Placeholder that forwards the path down and the status up |
 | `planning/grid_astar.py` | Step costs from clearance; eight-connected A* |
 | `planning/path_geometry.py` | Distance from a point to a path |
 | `planning/path_smoothing.py` | Shortcut simplification, Catmull-Rom spline, lookahead target |
@@ -91,12 +102,40 @@ navigation targets, its `--keep-running` option gives each VRX scoring plugin
 an unlimited running duration and exit delay, and disables automatic shutdown.
 Standard competition targets omit that option.
 
-The mission manager publishes `/mission/goal` (`PoseStamped`) and
-`/mission/state` (`String`), and advances when it receives
-`/mission/task_done` (`Bool`). Guidance stops the boat within 1 m of the goal
-but does not yet publish task completion, so the mission's single goal remains
-active. The demo launch gives this goal a one-hour simulation-time timeout for
-inspection.
+## Status chain
+
+Each layer knows only the layer directly above and below it. Commands go down
+(goal → global path → local path → target), and progress reports go up as
+`boat_interfaces/msg/NavigationStatus`:
+
+| State | Meaning |
+|---|---|
+| `IDLE` | Nothing to do yet: no goal or no path |
+| `ACTIVE` | Working towards the goal |
+| `SUCCEEDED` | The goal was reached |
+| `BLOCKED` | Cannot make progress right now but still trying; `detail` says why |
+
+Every report carries the goal it refers to (`goal`), so a layer ignores reports
+about a goal it no longer works on. The status topics are latched and published
+only when the state, goal or detail changes.
+
+1. **Guidance** knows only its path. Within 1 m of the path's end it stops the
+   boat and reports `SUCCEEDED` with the path's last point on `/guidance/status`.
+2. **Local planner** (placeholder) forwards that report unchanged on
+   `/planning/local_status`. The real local planner will report `SUCCEEDED`
+   only when the end of its short path is also the end of the global path.
+3. **Global planner** accepts `SUCCEEDED` only if it names the end of its
+   current path, and that path was planned for the current mission goal. It
+   then reports the mission goal reached on `/planning/global_status`, and
+   keeps reporting it until the goal changes.
+4. **Mission manager** advances to the next task when that report names the
+   current task's goal. `BLOCKED` is only logged; the task timeout
+   (`task_timeout_sec`) decides when to give up. When the last task is done
+   the mission state becomes `COMPLETE`.
+
+The mission manager also publishes `/mission/state` (`String`), for example
+`RUNNING 1/1` or `COMPLETE`. The demo launch gives each task a one-hour
+simulation-time timeout.
 
 If the packages have not been built in the running container, use your normal
 `make colcon` workflow first.
@@ -113,7 +152,12 @@ If the packages have not been built in the running container, use your normal
 | `/world_model/moving_objects` | `boat_interfaces/msg/TrackedObjectArray` | `world_model` | Objects that are not in the static map |
 | `/world_model/landmarks` | `boat_interfaces/msg/TrackedObjectArray` | `world_model` | Top-level world models (buoys, posts, …); latched |
 | `/mission/goal` | `geometry_msgs/msg/PoseStamped` | `mission_manager` | Current demo target in the `map` frame |
+| `/mission/state` | `std_msgs/msg/String` | `mission_manager` | `RUNNING i/n`, `COMPLETE` or `ABORTED` |
 | `/planning/global_path` | `nav_msgs/msg/Path` | `global_planner` | Latest route from the boat to the goal; empty when there is none |
+| `/planning/global_status` | `boat_interfaces/msg/NavigationStatus` | `global_planner` | Progress towards the mission goal; latched |
+| `/planning/local_path` | `nav_msgs/msg/Path` | `local_planner` | Path for guidance to follow (for now the global path) |
+| `/planning/local_status` | `boat_interfaces/msg/NavigationStatus` | `local_planner` | Progress along the global path (for now guidance's status) |
+| `/guidance/status` | `boat_interfaces/msg/NavigationStatus` | `local_spline_guidance` | Following, blocked, or at the end of the local path; latched |
 | `/planning/smoothed_path` | `nav_msgs/msg/Path` | `local_spline_guidance` | Smoothed route with path headings, for visualization |
 | `/guidance/target_position` | `geometry_msgs/msg/PoseArray` | `local_spline_guidance` | One lookahead target in `map`; empty means stop |
 | `/guidance/target_velocity` | `std_msgs/msg/Float64` | `local_spline_guidance` | Target forward speed in m/s |
@@ -201,11 +245,15 @@ again only after a trigger.
 
 ## Guidance and control
 
-Once a second, `local_spline_guidance` takes the latest global path, removes
+Once a second, `local_spline_guidance` takes the latest local path, removes
 points that a straight, collision-checked shortcut can skip, and draws a
-Catmull-Rom spline through the rest. Its collision check requires a free square
-of `safety_margin_m` (default 1.5 m) around each sample; if the spline fails
-the check it falls back to the straight shortcuts. It then picks the point
+Catmull-Rom spline through the rest. Its collision check uses the global
+planner's rule (`passable_cells` in `world_model/layers.py`): every sample must
+be at least `inflation_radius_m` from the nearest obstacle in the clearance
+field. If the spline fails the check it falls back to the straight shortcuts,
+and those fall back to the planner's own path, which always passes. The demo
+launch sets `inflation_radius_m` (default 3 m) for both nodes from one launch
+argument; set it with `inflation_radius_m:=<metres>` on the launch command. It then picks the point
 `lookahead_distance_m` (default 5 m) ahead of the boat's projection on the
 smoothed route and publishes it with `target_speed_mps` (default 1 m/s),
 reduced linearly within `slowdown_distance_m` (5 m) of the goal. Within
@@ -218,11 +266,11 @@ engine angle limited to ±45°) and sets thrust from the speed error (speed PID,
 −1000 to 2300 N). With a target in the `map` frame it uses
 `/localization/odometry`; an empty target sets angle and thrust to zero.
 
-Smoothing checks a smaller margin (1.5 m) than the global planner's inflation
-(3 m), so shortcuts plus tracking error can bring the boat inside the planner's
-inflated region. The planner then withdraws the path, guidance stops the boat,
-and planning resumes once the boat is clear again; in the wayfinding run this
-caused two pauses of a few seconds.
+The smoothed path stays outside the planner's inflated region, but the boat
+does not follow it exactly: line-of-sight steering cuts corners and waves push
+the boat sideways. If the boat itself enters the inflated region, the planner
+cannot start a search there; it withdraws the path, guidance stops the boat,
+and planning resumes only once the boat drifts clear.
 
 Change parameters while running, for example:
 

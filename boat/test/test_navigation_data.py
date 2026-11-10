@@ -10,7 +10,7 @@ from boat.navigation.planning.path_geometry import distance_to_polyline
 from boat.navigation.planning.path_smoothing import generate_safe_spline, line_of_sight_target
 from boat.navigation.simulation.obstacle_trajectory import MovingObstacle
 from boat.navigation.simulation.scenario_map import ScenarioMap
-from boat.navigation.world_model.layers import clearance_cells, paint_circle
+from boat.navigation.world_model.layers import clearance_cells, paint_circle, passable_cells
 from boat.navigation.world_model.objects import StationaryFilter, predict
 
 
@@ -176,6 +176,34 @@ def test_distance_to_polyline():
     assert distance_to_polyline((1.0, 1.0), [(1.0, 4.0)]) == 3.0
 
 
+def test_status_reporter_publishes_only_changes_and_matches_goals():
+    """Repeated reports are dropped; goal matching uses the tolerance."""
+    from boat_interfaces.msg import NavigationStatus
+
+    from boat.navigation.status import StatusReporter, same_goal
+
+    sent = []
+    clock = SimpleNamespace(
+        now=lambda: SimpleNamespace(to_msg=lambda: NavigationStatus().header.stamp)
+    )
+    node = SimpleNamespace(
+        get_clock=lambda: clock,
+        create_publisher=lambda *args: SimpleNamespace(publish=sent.append),
+    )
+    reporter = StatusReporter(node, "/test/status")
+    assert reporter.report(NavigationStatus.ACTIVE, (1.0, 2.0), "go")
+    assert not reporter.report(NavigationStatus.ACTIVE, (1.0, 2.0), "go")
+    assert reporter.report(NavigationStatus.SUCCEEDED, (1.0, 2.0), "done")
+    assert [message.state for message in sent] == [
+        NavigationStatus.ACTIVE,
+        NavigationStatus.SUCCEEDED,
+    ]
+    assert (sent[-1].goal.x, sent[-1].goal.y) == (1.0, 2.0)
+    assert same_goal(sent[-1].goal, (1.3, 2.0), 0.5)
+    assert not same_goal(sent[-1].goal, (2.0, 2.0), 0.5)
+    assert not same_goal(sent[-1].goal, None, 0.5)
+
+
 def test_line_of_sight_target_is_lookahead_along_route():
     """The target lies lookahead metres past the boat's projection onto the route."""
     route = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
@@ -194,8 +222,27 @@ def test_safe_spline_shortcuts_staircase_without_entering_obstacles():
         for col in range(18, 22):
             data[row * width + col] = 100
     route = [(5.0 + i, 5.0) for i in range(30)] + [(34.0, 5.0 + i) for i in range(1, 30)]
-    spline = generate_safe_spline(route, data, width, height, 0.0, 0.0, 1.0, 2.0)
+    cells = np.array(data, dtype=np.int8).reshape(height, width)
+    passable = passable_cells(clearance_cells(cells), 2.0)
+    spline = generate_safe_spline(route, passable, 0.0, 0.0, 1.0)
     assert spline and len(spline) < len(route) * 3
     assert spline[0] == route[0] and spline[-1] == route[-1]
     for x, y in spline:
-        assert not (16.0 <= x < 24.0 and 8.0 <= y < 32.0)
+        assert passable[math.floor(y), math.floor(x)]
+        assert not (17.0 <= x < 23.0 and 9.0 <= y < 31.0)
+
+
+def test_planner_route_always_passes_the_guidance_margin_check():
+    """Guidance and planner share one clearance rule, so an A* route is never rejected."""
+    width, height, radius = 60, 40, 3.0
+    cells = np.zeros((height, width), dtype=np.int8)
+    cells[0:28, 20:24] = 100
+    cells[12:40, 38:42] = 100
+    clearance = clearance_cells(cells)
+    route = astar(step_costs(clearance, radius), width, height, (5, 5), (55, 35))
+    assert route is not None
+    points = [cell_center(cell, 0.0, 0.0, 1.0) for cell in route]
+    passable = passable_cells(clearance, radius)
+    spline = generate_safe_spline(points, passable, 0.0, 0.0, 1.0)
+    assert spline[0] == points[0] and spline[-1] == points[-1]
+    assert all(clearance[math.floor(y), math.floor(x)] >= radius for x, y in spline)

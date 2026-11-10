@@ -1,15 +1,26 @@
-"""Mission manager: sends tasks one at a time and moves on when each is reported done."""
+"""Mission manager: sends tasks one at a time and moves on when each is reported done.
+
+It hands each goal to the global planner on ``/mission/goal`` and listens to the
+planner's ``/planning/global_status``. A report counts only if it names the
+current task's goal, so a late report about an earlier goal is ignored.
+"""
 
 import rclpy
+from boat_interfaces.msg import NavigationStatus
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
-from std_msgs.msg import Bool, String
+from std_msgs.msg import String
+
+from boat.navigation.status import STATE_NAMES, STATUS_QOS, same_goal
 
 # One wayfinding demo goal in the local "map" frame (metres, x east, y north).
 # Later the mission can come from a scenario or config file.
 MISSION = [
     {"type": "goto", "x": -593.0, "y": 241.0},
 ]
+
+# How close a status report's goal must be to the task goal to refer to it.
+GOAL_MATCH_M = 0.5
 
 
 class MissionManager(Node):
@@ -22,12 +33,15 @@ class MissionManager(Node):
 
         self.goal_pub = self.create_publisher(PoseStamped, "/mission/goal", 10)
         self.state_pub = self.create_publisher(String, "/mission/state", 10)
-        self.create_subscription(Bool, "/mission/task_done", self.on_task_done, 10)
+        self.create_subscription(
+            NavigationStatus, "/planning/global_status", self.on_status, STATUS_QOS
+        )
 
         self.tasks = MISSION
         self.index = 0
         self.state = "IDLE"
         self.task_started = None
+        self.last_report = None
         self.timer = self.create_timer(1.0, self.tick)
         self.start_task()
 
@@ -41,16 +55,27 @@ class MissionManager(Node):
         self.get_logger().info(
             f"task {self.index + 1}/{len(self.tasks)}: {self.tasks[self.index]}"
         )
+        self.publish_goal(self.tasks[self.index])
 
-    def on_task_done(self, msg):
-        """Advance on success, abort on failure; ignore reports when nothing is running."""
+    def on_status(self, msg):
+        """Advance when the planner reports the current goal reached; log other changes."""
         if self.state != "RUNNING":
             return
-        if not msg.data:
-            self.set_state("ABORTED")
+        task = self.tasks[self.index]
+        if not same_goal(msg.goal, (task["x"], task["y"]), GOAL_MATCH_M):
             return
-        self.index += 1
-        self.start_task()
+        report = (msg.state, msg.detail)
+        if report != self.last_report:
+            self.last_report = report
+            self.get_logger().info(
+                f"task {self.index + 1}: planner {STATE_NAMES.get(msg.state, msg.state)}"
+                + (f" ({msg.detail})" if msg.detail else "")
+            )
+        # BLOCKED means the planner is still trying; the task timeout decides when to give up.
+        if msg.state == NavigationStatus.SUCCEEDED:
+            self.index += 1
+            self.last_report = None
+            self.start_task()
 
     def tick(self):
         """Check the timeout and republish the goal so late-starting nodes still get it."""
