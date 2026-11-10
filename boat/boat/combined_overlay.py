@@ -18,8 +18,10 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 
-# same colours as water_segmentation: 0 obstacle = orange, 1 water = blue; sky (2) is left unpainted
-TINT = {0: np.array([255, 120, 0], np.float32), 1: np.array([0, 90, 255], np.float32)}
+# same colours as water_segmentation: 0 obstacle = orange, 1 water = blue, 3 our own boat = dark grey;
+# sky (2) is left unpainted
+TINT = {0: np.array([255, 120, 0], np.float32), 1: np.array([0, 90, 255], np.float32),
+        3: np.array([40, 40, 40], np.float32)}
 
 
 class CombinedOverlay(Node):

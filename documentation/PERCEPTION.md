@@ -39,16 +39,19 @@ All three nodes print to that one terminal; each line starts with the node name.
 | `yolo_model` | `/ws/src/boat/models/yolo26s.pt` | `yolo_detector`; Jana's buoy model is `buoys_best.pt` |
 | `confidence` | `0.5` | `yolo_detector`; detections below this score are dropped |
 | `water_overlay` | `true` | `water_segmentation`; `false` publishes only the mask |
+| `own_boat` | the WAM-V's hulls in the front_left_camera | `water_segmentation`; where our own boat is in the image (see "Our own boat"); `none` switches it off |
 | `combined_overlay` | `true` | `false` leaves out the `combined_overlay` node |
 | `water_scan` | `true` | `false` leaves out the `water_scan` node |
 
 Examples:
 
 ```bash
-ros2 launch boat perception.launch.py image_topic:=/wamv/sensors/cameras/front_right_camera_sensor/image_raw
+ros2 launch boat perception.launch.py image_topic:=/wamv/sensors/cameras/front_right_camera_sensor/image_raw own_boat:=none
 ros2 launch boat perception.launch.py ewasr_model:=/ws/src/boat/models/ewasr_resnet18.onnx   # the original model
 ros2 launch boat perception.launch.py yolo_model:=/ws/src/boat/models/buoys_best.pt confidence:=0.1
 ```
+
+The own-boat outline and `water_scan`'s camera position are set for the front_left_camera. With another camera, add `own_boat:=none` as in the first example (or measure that camera's outline, see "Our own boat").
 
 **With Jana's MEBC-style buoys** (`sim_models/`, from branch `perception/sim-buoys`; `buoys_best.pt` from Jana, in `models/`): start `make vrx WORLD=perception_task`, then in a `make sh` terminal place her five buoys in a row 10 m ahead and start the nodes with her model:
 
@@ -97,12 +100,12 @@ Limitations:
 
 ### `water_segmentation`
 
-Runs eWaSR on the camera image and labels every pixel as obstacle, water or sky.
+Runs eWaSR on the camera image and labels every pixel as obstacle, water or sky, and marks the part of the image where our own boat is.
 
 | | Topic | Type |
 |---|---|---|
 | Subscribes | `image_topic` | `sensor_msgs/msg/Image` (`rgb8` or `bgr8`), sensor-data QoS |
-| Publishes | `/perception/water_mask` | `sensor_msgs/msg/Image` (`mono8`): per pixel 0 obstacle, 1 water, 2 sky; same size and header as the input |
+| Publishes | `/perception/water_mask` | `sensor_msgs/msg/Image` (`mono8`): per pixel 0 obstacle, 1 water, 2 sky, 3 our own boat; same size and header as the input |
 | Publishes | `/perception/water_overlay` | `sensor_msgs/msg/Image` (`rgb8`), same size and header as the input; only if `publish_overlay` |
 
 | Parameter | Default | Meaning |
@@ -111,9 +114,16 @@ Runs eWaSR on the camera image and labels every pixel as obstacle, water or sky.
 | `model_path` | `/ws/src/boat/models/ewasr_resnet18_lars.onnx` | eWaSR model file; the node stops with a message if it is missing |
 | `seconds_between_frames` | `1.0` | frames arriving sooner are skipped; `0.0` processes every frame |
 | `publish_overlay` | `true` | `false` skips drawing the overlay (saves time on the boat) |
+| `own_boat_polygons` | `""` (the WAM-V's hulls in the launch file) | outline of our own boat in the image, see below; `""` or `none`: no own boat in view |
 | `report_every` | `20` | frames per timing summary |
 
-The overlay is the camera image blended 50/50 with the classes: orange obstacle, blue water, grey sky. Log per frame, for example: `water 37 %, sky 51 %, obstacles 12 % | eWaSR inference: 411.0 ms, total: 455.0 ms`.
+The overlay is the camera image blended 50/50 with the classes: orange obstacle, blue water, grey sky, dark grey our own boat. Log per frame, for example: `water 60 %, sky 16 %, obstacles 15 %, own boat 10 % | eWaSR inference: 411.0 ms, total: 455.0 ms`.
+
+**Our own boat.** The camera is fixed to the boat, so the parts of our boat it sees are always at the same pixels. In VRX the front_left_camera sees the WAM-V's two hulls in the bottom corners, and eWaSR calls them obstacle. `own_boat_polygons` outlines them, and every pixel inside the outline is published as 3 (our own boat) whatever the model says there, so `water_scan`, and anything else that reads the mask, does not take our hulls for an obstacle. Outside the outline nothing changes, so a buoy next to a hull is still an obstacle.
+
+The outline is written as points, in fractions of the image width and height (`0,0` top left, `1,1` bottom right): `x,y x,y x,y ...`, one polygon per hull, separated by `;`. The launch file sets the outline for VRX's front_left_camera (`VRX_FRONT_LEFT_OWN_BOAT` in `perception.launch.py`), traced around the hulls on two `/perception/combined_overlay` screenshots, with a margin of about 20 pixels for the speckles the model puts next to them. It covers 10 % of the image and all of what the model marked at the hulls in both screenshots.
+
+For another camera, or the real boat, measure it again: in `rqt_image_view` showing `/perception/water_overlay`, tick the box left of the `/perception/water_overlay_mouse_left` field, and click around the hull. Each click is published in image pixels (`ros2 topic echo /perception/water_overlay_mouse_left`); divide x by the image width and y by the height, and pass the points as `own_boat:="x,y x,y ..."`, or put them in the launch file.
 
 Limitations:
 - We use the variant without IMU input (`ewasr_resnet18`), so the model gets no horizon information. In VRX the near water, rendered as a mirror of the sky, comes out as sky. The planned fix is the IMU variant (`ewasr_resnet18_imu`, same release) with a horizon mask computed from the IMU.
@@ -157,13 +167,13 @@ Shows segmentation and detections together: paints the water mask onto the detec
 | `mask_topic` | `/perception/water_mask` | segmentation result |
 | `boxes_topic` | `/perception/yolo_overlay` | detector image with boxes |
 | `max_age` | `2.0` | s; a mask further away in time than this is not painted |
-| `alpha` | `0.4` | strength of the colours: water blue, obstacle orange, sky left as it is |
+| `alpha` | `0.4` | strength of the colours: water blue, obstacle orange, our own boat dark grey, sky left as it is |
 
 The two nodes pick their frames on their own, so each detector image gets the mask closest in time. The label in the top-left corner says which: `same frame` (on the boat, where both process every frame), `mask 0.4 s older` (in VRX on a CPU), or `detections only` when no mask is close enough.
 
 ### `water_scan`
 
-Turns the water mask into the distance to the nearest obstacle in each direction, published like a LiDAR scan, so the planner gets a second obstacle source that does not depend on the LiDAR. For each column of the mask it takes the first pixel above the bottom of the image that is not water, where an obstacle meets the water. The camera's lens data, its height above the water and its tilt, plus the boat's roll and pitch from the IMU, turn that pixel into a point on the water. A column that is water up to the sky is free.
+Turns the water mask into the distance to the nearest obstacle in each direction, published like a LiDAR scan, so the planner gets a second obstacle source that does not depend on the LiDAR. For each column of the mask it takes the first pixel above the bottom of the image that is not water, where an obstacle meets the water. Our own boat (3 in the mask) is looked past like water, and so is "sky" below the horizon, which is a reflection on the water that the model mistook for sky. The camera's lens data, its height above the water and its tilt, plus the boat's roll and pitch from the IMU, turn that pixel into a point on the water. A column that is water up to the sky is free.
 
 | | Topic | Type |
 |---|---|---|
@@ -185,18 +195,25 @@ Turns the water mask into the distance to the nearest obstacle in each direction
 | `frame_id` | `wamv/wamv/base_link` | frame of the published scan |
 | `angle_increment_deg` | `0.5` | angle between two directions of the scan |
 | `max_range` | `60.0` | m; obstacles farther away count as free |
-| `ignore_bottom` | `0.0` (`0.12` in the launch file) | share of the image height at the bottom to skip, for our own hull |
+| `ignore_bottom` | `0.0` (`0.28` in the launch file) | share of the image height at the bottom to treat as water, for model speckles next to our hulls |
+| `ignore_left`, `ignore_right` | `0.5`, `0.5` (`0.30`, `0.26` in the launch file) | share of the image width from the left and right edge where `ignore_bottom` applies; `0.5` and `0.5` is the whole width |
 | `column_step` | `2` | look at every n-th column |
 
-Each value in `ranges` is the distance in metres to the nearest obstacle in that direction, `inf` where the camera sees free water up to the horizon (or the obstacle is beyond `max_range`), and `nan` where no part of the image looks in that direction. Angles are positive to port, as in any ROS scan. Log per frame, for example: `nearest obstacle 25.5 m at +1 deg, 12 % of directions free | roll +2.0, pitch -3.0 deg`. If more than 30 % of the bottom row is obstacle on the first frame, the node suggests raising `ignore_bottom`, because that is usually our own hull.
+Each value in `ranges` is the distance in metres to the nearest obstacle in that direction, `inf` where the camera sees free water up to the horizon (or the obstacle is beyond `max_range`), and `nan` where no part of the image looks in that direction. Angles are positive to port, as in any ROS scan. Log per frame, for example: `5 obstacles, left to right: 12.0 m at +34 deg, 10.5 m at +18 deg, 10.0 m at +0 deg, 10.5 m at -17 deg, 12.0 m at -33 deg, 49 % of directions free | roll +0.7, pitch +1.7 deg`. Neighbouring directions with a distance count as one object, reported at its nearest point: the outer columns of an upright object see only its upper part (the camera looks down), which reads farther away.
 
-Tested against a ray-cast scene with flat water and a wall at 10, 20 and 40 m: under 1 % error in every direction the camera sees. With the boat rolled 3° and pitched 2°, the error stays under 1 % with the IMU and is 50 % without it.
+First run in VRX with Jana's five buoys (10 m ahead of the boat's origin, 3.5 m apart): the mooring buoy in the middle came out at 11.7 m instead of 10.0 m, because the segmentation calls the lower part of its drum water, so the obstacle seems to start higher up. The LiDAR saw the same buoys at the right distances. The geometry itself is within 1 % in the tests; this error comes from the mask. If more than 30 % of the bottom row is obstacle on the first frame, the node suggests outlining our own boat (`own_boat_polygons` in `water_segmentation`), because that is usually our own hulls.
+
+Our own hulls: `water_segmentation` marks them as our own boat, which `water_scan` looks past. On top of that, the launch file skips the bottom corners where the hulls are (`ignore_bottom`, `ignore_left`, `ignore_right`), because the model now and then marks a speckle of water next to a hull as obstacle, which would read as an obstacle 2 to 3 m away. Only the corners: the middle of the image still finds an object close ahead between the hulls at the right distance (tested: a box 2.6 m ahead comes out at 2.60 m; skipping the whole width would put it at 3.18 m). On a VRX frame with Jana's buoys (taken from a `combined_overlay` screenshot), the model alone puts the nearest obstacle at 2.9 m (the left hull); with the hulls marked, the nearest is a buoy at 12.3 m.
+
+"Sky" below the horizon: the model sometimes calls a patch of water sky, for example right above the hulls. Until 10 November 2026 such a patch ended the column, so `water_scan` reported that direction as free and hid what was behind it (tested: a box 2.6 m ahead behind such a patch read as free water). Now the node works out where the horizon is in each column from the camera tilt and the IMU, and looks past sky below it.
+
+Tested against a ray-cast scene with flat water and a wall at 10, 20 and 40 m: under 1 % error in every direction the camera sees. With the boat rolled 3° and pitched 2°, the error stays under 1 % with the IMU and is 50 % without it. With the hulls marked as our own boat and no corner skip, the box 2.6 m ahead comes out at 2.60 m and the wall within 1 %. Sky patches on the water, with the boat level and with it rolled 5° and pitched 3°, change no distance.
 
 Limitations:
 - Flat-water geometry: accuracy falls with distance (at 1.6 m height and an 80° wide camera, one pixel at 30 m is about 0.6 m), and with errors in `camera_height` and `camera_pitch_deg`. Measure both on the real mount.
 - Only as good as the water mask: an obstacle called water is missed, a reflection called obstacle becomes a false obstacle.
 - The scan is computed in a level frame that turns with the boat, but published in `frame_id`, which pitches and rolls with the boat; at a few degrees of tilt the difference is small.
-- Covers only the camera's field of view, about 80° ahead in VRX.
+- Covers only the camera's field of view, about 80° ahead in VRX. It cannot see the water hidden behind our own hulls, so directions there are judged from what is visible above them.
 
 ## For fusion
 
@@ -204,7 +221,7 @@ What exists today:
 
 | Topic | Type | Content |
 |---|---|---|
-| `/perception/water_mask` | `sensor_msgs/msg/Image` (`mono8`) | per pixel 0 obstacle, 1 water, 2 sky, at the camera image's resolution |
+| `/perception/water_mask` | `sensor_msgs/msg/Image` (`mono8`) | per pixel 0 obstacle, 1 water, 2 sky, 3 our own boat, at the camera image's resolution |
 | `/perception/water_scan` | `sensor_msgs/msg/LaserScan` | distance to the nearest obstacle per direction, from the water mask (see `water_scan`) |
 
 The mask carries the header of the camera image it came from (timestamp and `frame_id`), so a listener can match it to the LiDAR scan from the same moment and use the camera's `camera_info` to turn pixels into directions. Check it while the nodes run:

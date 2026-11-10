@@ -22,7 +22,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image, Imu, LaserScan
 
-WATER, SKY = 1, 2  # classes in the water mask: 0 obstacle, 1 water, 2 sky
+WATER, SKY, OWN_BOAT = 1, 2, 3  # classes in the water mask: 0 obstacle, 1 water, 2 sky, 3 our own boat
 
 
 def rot_x(a):
@@ -64,41 +64,65 @@ def rays(u, v, fx, fy, cx, cy, rotation):
     return rotation @ body
 
 
-def edge_rows(labels, ignore_rows):
+def edge_rows(labels, ignore_rows, sky_from=None):
     """Per column: the row of the first non-water pixel going up from the bottom (above the ignored rows),
-    or -1 where the column is water all the way to the top."""
+    or -1 where the column is water all the way to the top.
+
+    Our own boat is looked past, like water. sky_from (per column, optional): the first row below the
+    horizon; "sky" from there down is the model mistaking a reflection or speckle on the water for sky,
+    and is looked past too, instead of ending the column there and hiding what is behind it."""
     h = labels.shape[0] - ignore_rows
     if h <= 0:
         return np.full(labels.shape[1], -1)
-    nonwater = labels[:h][::-1] != WATER
+    passable = np.isin(labels[:h], (WATER, OWN_BOAT))
+    if sky_from is not None:
+        passable |= (labels[:h] == SKY) & (np.arange(h)[:, None] >= sky_from[None, :])
+    nonwater = ~passable[::-1]
     found = nonwater.any(axis=0)
     return np.where(found, h - 1 - nonwater.argmax(axis=0), -1)
 
 
 def compute_scan(labels, intrinsics, camera_height, mount_rpy, boat_rp, camera_xy, angle_min, angle_max,
-                 angle_increment, max_range, ignore_bottom, column_step):
+                 angle_increment, max_range, ignore_bottom, column_step, ignore_left=0.5, ignore_right=0.5):
     """The scan for one water mask. Returns (ranges, details).
 
     ranges: one value per angle from angle_min to angle_max (radians, positive to port), as in a LaserScan:
     the distance in metres to the nearest obstacle, +inf where the camera sees free water up to the horizon
     (or the obstacle is beyond max_range), nan where no column of the image looks in that direction.
     Distances and angles are from camera_xy, the camera's position on the boat (x forward, y to port), so
-    they are relative to the boat's origin."""
+    they are relative to the boat's origin.
+
+    Our own boat: pixels marked 3 (own boat) by water_segmentation are looked past, like water. On top of
+    that, the bottom ignore_bottom of the image height is treated as water in the left ignore_left and the
+    right ignore_right of the image width (both 0.5: the whole width), for model speckles next to the hulls
+    in the bottom corners, while the middle still sees what is close ahead."""
     fx, fy, cx, cy, info_w, info_h = intrinsics
     mask_h, mask_w = labels.shape
     sx, sy = info_w / mask_w, info_h / mask_h  # the mask may be smaller than the camera image
     ignore_rows = int(round(ignore_bottom * mask_h))
+    if ignore_rows > 0:  # paint our own hulls as water, so the scan looks past them
+        labels = labels.copy()
+        band = labels[mask_h - ignore_rows:]
+        left, right = int(round(min(ignore_left, 1.0) * mask_w)), int(round(min(ignore_right, 1.0) * mask_w))
+        band[:, :left] = WATER
+        if right > 0:
+            band[:, mask_w - right:] = WATER
     cols = np.arange(0, mask_w, max(1, column_step))
-    rows = edge_rows(labels[:, cols], ignore_rows)
+    # camera pixel coordinates as in camera_info (OpenCV): the centre of pixel (0, 0) is at (0, 0)
+    u = (cols + 0.5) * sx - 0.5
+    rotation = camera_to_level(mount_rpy, boat_rp)
+    sky_from = None
+    if rotation[2, 2] > 1e-6:  # the horizon in each column: the camera row whose ray is level
+        v_horizon = cy + fy * (rotation[2, 0] - rotation[2, 1] * (u - cx) / fx) / rotation[2, 2]
+        sky_from = np.floor((v_horizon + 0.5) / sy).astype(int) + 1  # first mask row wholly below it
+    rows = edge_rows(labels[:, cols], 0, sky_from)
     edge_class = np.where(rows >= 0, labels[np.clip(rows, 0, None), cols], WATER)
 
     # where to look in each column: the boundary between the obstacle pixel and the water below it;
-    # for a free column, the lowest water pixel (only its direction is used). Camera pixel coordinates
-    # as in camera_info (OpenCV): the centre of pixel (0, 0) is at (0, 0).
-    bottom = mask_h - ignore_rows - 1
+    # for a free column, the lowest water pixel (only its direction is used)
+    bottom = mask_h - 1
     v = np.where(rows >= 0, rows + 1.0, bottom + 0.5) * sy - 0.5
-    u = (cols + 0.5) * sx - 0.5
-    d = rays(u, v, fx, fy, cx, cy, camera_to_level(mount_rpy, boat_rp))
+    d = rays(u, v, fx, fy, cx, cy, rotation)
 
     below = d[2] < -1e-9  # rays above the horizon never reach the water
     t = np.where(below, camera_height / np.where(below, -d[2], 1.0), np.inf)
@@ -120,11 +144,27 @@ def compute_scan(labels, intrinsics, camera_height, mount_rpy, boat_rp, camera_x
     ranges[hit] = nearest_per_bin[hit]
 
     details = {"columns": len(cols), "obstacle_columns": int(obstacle.sum()),
-               "bottom_obstacle_share": float(np.mean(labels[bottom, :] != WATER)) if bottom >= 0 else 0.0}
+               "bottom_obstacle_share": float(np.mean(~np.isin(labels[bottom, :], (WATER, OWN_BOAT))))}
     if hit.any():
         i = int(np.nanargmin(np.where(hit, ranges, np.nan)))
         details["nearest"] = (float(ranges[i]), math.degrees(angle_min + i * angle_increment))
     return ranges, details
+
+
+def obstacle_segments(ranges, angle_min, angle_increment, max_gap=1):
+    """Groups neighbouring directions with a distance into objects: a new object starts after more than
+    max_gap directions without one. Returns [(distance of its nearest point in m, its direction in degrees),
+    ...], left (port) to right. The nearest point is used because the outer columns of an upright object
+    see only its upper part (the camera looks down), which reads farther away."""
+    idx = np.flatnonzero(np.isfinite(ranges))
+    if idx.size == 0:
+        return []
+    breaks = np.flatnonzero(np.diff(idx) > max_gap + 1) + 1
+    objects = []
+    for group in np.split(idx, breaks):
+        k = group[np.argmin(ranges[group])]
+        objects.append((float(ranges[k]), math.degrees(angle_min + k * angle_increment)))
+    return sorted(objects, key=lambda o: -o[1])
 
 
 class WaterScan(Node):
@@ -146,7 +186,9 @@ class WaterScan(Node):
         self.declare_parameter("frame_id", "wamv/wamv/base_link")  # frame of the published scan
         self.declare_parameter("angle_increment_deg", 0.5)
         self.declare_parameter("max_range", 60.0)  # m; obstacles farther away count as free
-        self.declare_parameter("ignore_bottom", 0.0)  # share of the image height at the bottom to skip (own hull)
+        self.declare_parameter("ignore_bottom", 0.0)  # share of the image height at the bottom to skip (own hulls)
+        self.declare_parameter("ignore_left", 0.5)  # ... only in this share of the width from the left edge
+        self.declare_parameter("ignore_right", 0.5)  # ... and from the right edge (0.5 + 0.5: the whole width)
         self.declare_parameter("column_step", 2)  # look at every n-th column
 
         self.info = None  # (fx, fy, cx, cy, width, height)
@@ -218,7 +260,8 @@ class WaterScan(Node):
             labels, self.info, self.get_parameter("camera_height").value, self.mount_rpy(), boat_rp,
             (self.get_parameter("camera_x").value, self.get_parameter("camera_y").value),
             angle_min, angle_max, inc, max_range, self.get_parameter("ignore_bottom").value,
-            self.get_parameter("column_step").value)
+            self.get_parameter("column_step").value, self.get_parameter("ignore_left").value,
+            self.get_parameter("ignore_right").value)
 
         scan = LaserScan()
         scan.header.stamp = msg.header.stamp  # the camera image's time
@@ -229,8 +272,13 @@ class WaterScan(Node):
         self.pub.publish(scan)
 
         self.frames += 1
-        near = details.get("nearest")
-        text = f"nearest obstacle {near[0]:.1f} m at {near[1]:+.0f} deg" if near else "no obstacle in view"
+        objects = obstacle_segments(ranges, angle_min, inc)
+        if objects:
+            listed = ", ".join(f"{r:.1f} m at {b:+.0f} deg" for r, b in objects[:8])
+            noun = "obstacle" if len(objects) == 1 else "obstacles"
+            text = f"{len(objects)} {noun}, left to right: {listed}" + (", ..." if len(objects) > 8 else "")
+        else:
+            text = "no obstacle in view"
         free = 100.0 * np.mean(np.isinf(ranges))
         self.get_logger().info(
             f"{text}, {free:.0f} % of directions free | roll {math.degrees(boat_rp[0]):+.1f}, "
@@ -239,7 +287,8 @@ class WaterScan(Node):
         if self.frames == 1 and details["bottom_obstacle_share"] > 0.3:
             self.get_logger().warn(
                 f"{100 * details['bottom_obstacle_share']:.0f} % of the bottom row is obstacle; if that is our own "
-                "hull, raise ignore_bottom (share of the image height to skip, e.g. 0.1)"
+                "boat, outline it with water_segmentation's own_boat_polygons (documentation/PERCEPTION.md, "
+                "'Our own boat'), or skip the bottom of the image here with ignore_bottom/ignore_left/ignore_right"
             )
 
 
