@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<!-- Mooring buoy: tall white drum, rusty cross frame and post, dark swivel block, grey shackle, small orange ball.
+     Proportions measured from our MEBC 2026 photos (drum ~2 m wide, ~0.9 m above water, ~1.9 m tall in total).
+     Textures: mooring_drum_v4.png (toned-down drum), rust_post.png. Static. Water surface = z 0. -->
+<sdf version="1.9">
+  <model name="mooring_buoy">
+    <static>true</static>
+    <link name="link">
+      <visual name="drum"><pose>0 0 0.35 0 0 0</pose><geometry><cylinder><radius>1.0</radius><length>1.1</length></cylinder></geometry><material><ambient>0.7 0.7 0.7 1</ambient><diffuse>1 1 1 1</diffuse><specular>0.1 0.1 0.1 1</specular><pbr><metal><albedo_map>/ws/src/boat/sim_models/textures/mooring_drum_v4.png</albedo_map><roughness>0.8</roughness><metalness>0.0</metalness></metal></pbr></material></visual>
+      <collision name="drum_col"><pose>0 0 0.35 0 0 0</pose><geometry><cylinder><radius>1.0</radius><length>1.1</length></cylinder></geometry></collision>
+      <visual name="deck"><pose>0 0 0.92 0 0 0</pose><geometry><cylinder><radius>0.88</radius><length>0.04</length></cylinder></geometry><material><ambient>0.92 0.91 0.86 1</ambient><diffuse>0.92 0.91 0.86 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="frame_a"><pose>0 0 0.97 0 0 0.3</pose><geometry><box><size>1.6 0.1 0.06</size></box></geometry><material><ambient>0.62 0.32 0.14 1</ambient><diffuse>0.62 0.32 0.14 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="frame_b"><pose>0 0 0.97 0 0 1.87</pose><geometry><box><size>1.6 0.1 0.06</size></box></geometry><material><ambient>0.62 0.32 0.14 1</ambient><diffuse>0.62 0.32 0.14 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="ring0"><pose>0.764 0.236 1.0 1.5708 0 1.871</pose><geometry><cylinder><radius>0.08</radius><length>0.05</length></cylinder></geometry><material><ambient>0.62 0.32 0.14 1</ambient><diffuse>0.62 0.32 0.14 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="ring1"><pose>-0.236 0.764 1.0 1.5708 0 3.441</pose><geometry><cylinder><radius>0.08</radius><length>0.05</length></cylinder></geometry><material><ambient>0.62 0.32 0.14 1</ambient><diffuse>0.62 0.32 0.14 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="ring2"><pose>-0.765 -0.235 1.0 1.5708 0 5.011</pose><geometry><cylinder><radius>0.08</radius><length>0.05</length></cylinder></geometry><material><ambient>0.62 0.32 0.14 1</ambient><diffuse>0.62 0.32 0.14 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="ring3"><pose>0.235 -0.765 1.0 1.5708 0 6.581</pose><geometry><cylinder><radius>0.08</radius><length>0.05</length></cylinder></geometry><material><ambient>0.62 0.32 0.14 1</ambient><diffuse>0.62 0.32 0.14 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="post"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>0.28 0.28 0.55</size></box></geometry><material><ambient>0.7 0.7 0.7 1</ambient><diffuse>1 1 1 1</diffuse><specular>0.1 0.1 0.1 1</specular><pbr><metal><albedo_map>/ws/src/boat/sim_models/textures/rust_post.png</albedo_map><roughness>0.8</roughness><metalness>0.0</metalness></metal></pbr></material></visual>
+      <collision name="post_col"><pose>0 0 1.25 0 0 0</pose><geometry><box><size>0.28 0.28 0.55</size></box></geometry></collision>
+      <visual name="swivel"><pose>0 0 1.65 0 0 0</pose><geometry><box><size>0.32 0.3 0.26</size></box></geometry><material><ambient>0.18 0.18 0.19 1</ambient><diffuse>0.18 0.18 0.19 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <collision name="swivel_col"><pose>0 0 1.65 0 0 0</pose><geometry><box><size>0.32 0.3 0.26</size></box></geometry></collision>
+      <visual name="shackle0"><pose>0 0.170 1.850 0.000 0 0</pose><geometry><box><size>0.06 0.07 0.07</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle1"><pose>0 0.157 1.915 0.393 0 0</pose><geometry><box><size>0.06 0.07 0.07</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle2"><pose>0 0.120 1.970 0.785 0 0</pose><geometry><box><size>0.06 0.07 0.07</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle3"><pose>0 0.065 2.007 1.178 0 0</pose><geometry><box><size>0.06 0.07 0.07</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle4"><pose>0 0.000 2.020 1.571 0 0</pose><geometry><box><size>0.06 0.07 0.07</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle5"><pose>0 -0.065 2.007 1.963 0 0</pose><geometry><box><size>0.06 0.07 0.07</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle6"><pose>0 -0.120 1.970 2.356 0 0</pose><geometry><box><size>0.06 0.07 0.07</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle7"><pose>0 -0.157 1.915 2.749 0 0</pose><geometry><box><size>0.06 0.07 0.07</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle8"><pose>0 -0.170 1.850 3.142 0 0</pose><geometry><box><size>0.06 0.07 0.07</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle_leg_l"><pose>0 0.17 1.81 0 0 0</pose><geometry><box><size>0.06 0.06 0.1</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="shackle_leg_r"><pose>0 -0.17 1.81 0 0 0</pose><geometry><box><size>0.06 0.06 0.1</size></box></geometry><material><ambient>0.38 0.38 0.4 1</ambient><diffuse>0.38 0.38 0.4 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+      <visual name="ball"><pose>0.55 0.35 1.06 0 0 0</pose><geometry><sphere><radius>0.13</radius></sphere></geometry><material><ambient>0.95 0.25 0.08 1</ambient><diffuse>0.95 0.25 0.08 1</diffuse><specular>0.15 0.15 0.15 1</specular></material></visual>
+    </link>
+  </model>
+</sdf>
