@@ -75,5 +75,19 @@ def generate_launch_description():
                 parameters=[{"use_sim_time": True}],
                 output="screen",
             ),
+            Node(
+                package="boat",
+                executable="local_spline_guidance",
+                name="local_spline_guidance",
+                parameters=[{"use_sim_time": True}],
+                output="screen",
+            ),
+            Node(
+                package="boat",
+                executable="pid_controller",
+                name="pid_controller",
+                parameters=[{"use_sim_time": True}],
+                output="screen",
+            ),
         ]
     )

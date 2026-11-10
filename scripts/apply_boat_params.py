@@ -95,9 +95,9 @@ def apply_lidar(root, lidar, allow_missing=False):
         set_path(sensor, "ray/noise/stddev", lidar["noise_stddev"])
 
 
-def apply_gps(root, gps):
+def apply_gps(root, gps, allow_missing=False):
     """Set the rate of every GPS, and add position noise if any is requested."""
-    for sensor in sensors(root, "navsat"):
+    for sensor in sensors(root, "navsat", allow_missing):
         set_path(sensor, "update_rate", gps["rate"])
         for axis in ("horizontal", "vertical"):
             stddev = gps[f"{axis}_noise_stddev"]
@@ -107,9 +107,9 @@ def apply_gps(root, gps):
                 sensor.find(noise).set("type", "gaussian")
 
 
-def apply_imu(root, imu):
+def apply_imu(root, imu, allow_missing=False):
     """Set the rate of every IMU."""
-    for sensor in sensors(root, "imu"):
+    for sensor in sensors(root, "imu", allow_missing):
         set_path(sensor, "update_rate", imu["rate"])
 
 
