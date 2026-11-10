@@ -15,3 +15,5 @@ __pycache__/
 
 models/*.onnx
 models/*.pt
+models/*.csv
+datasets/
