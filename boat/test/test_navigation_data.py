@@ -7,6 +7,7 @@ import numpy as np
 
 from boat.navigation.planning.grid_astar import astar, cell_center, step_costs, world_to_cell
 from boat.navigation.planning.path_geometry import distance_to_polyline
+from boat.navigation.planning.path_smoothing import generate_safe_spline, line_of_sight_target
 from boat.navigation.simulation.obstacle_trajectory import MovingObstacle
 from boat.navigation.simulation.scenario_map import ScenarioMap
 from boat.navigation.world_model.layers import clearance_cells, paint_circle
@@ -173,3 +174,28 @@ def test_distance_to_polyline():
     assert distance_to_polyline((13.0, 5.0), line) == 3.0
     assert distance_to_polyline((-4.0, 3.0), line) == 5.0
     assert distance_to_polyline((1.0, 1.0), [(1.0, 4.0)]) == 3.0
+
+
+def test_line_of_sight_target_is_lookahead_along_route():
+    """The target lies lookahead metres past the boat's projection onto the route."""
+    route = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
+    target, heading = line_of_sight_target(route, 2.0, 1.0, 5.0)
+    assert target == (7.0, 0.0) and heading == 0.0
+    target, heading = line_of_sight_target(route, 9.0, -1.0, 5.0)
+    assert target == (10.0, 4.0) and math.isclose(heading, math.pi / 2)
+    assert line_of_sight_target(route, 10.0, 9.0, 5.0)[0] == (10.0, 10.0)
+
+
+def test_safe_spline_shortcuts_staircase_without_entering_obstacles():
+    """Smoothing removes grid corners but keeps the margin around obstacles."""
+    width = height = 40
+    data = [0] * (width * height)
+    for row in range(10, 30):
+        for col in range(18, 22):
+            data[row * width + col] = 100
+    route = [(5.0 + i, 5.0) for i in range(30)] + [(34.0, 5.0 + i) for i in range(1, 30)]
+    spline = generate_safe_spline(route, data, width, height, 0.0, 0.0, 1.0, 2.0)
+    assert spline and len(spline) < len(route) * 3
+    assert spline[0] == route[0] and spline[-1] == route[-1]
+    for x, y in spline:
+        assert not (16.0 <= x < 24.0 and 8.0 <= y < 32.0)

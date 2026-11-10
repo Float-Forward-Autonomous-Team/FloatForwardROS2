@@ -78,10 +78,11 @@ needed for this YAML profile.
 
 The navigation demo adds simulated Localization and Perception topics, a world
 model (collision-derived static map, moving objects, landmarks), physical
-moving obstacles, and a global A* route to a demo goal.
+moving obstacles, a global A* route to a demo goal, smoothing with
+line-of-sight guidance, and a PID controller.
 After starting `wayfinding_task`, run
 `ros2 launch boat navigation_demo.launch.py` in a second container shell.
-It does not command the boat. See
+The boat drives itself to the goal and stops there. See
 [NAVIGATION_INPUTS.md](documentation/NAVIGATION_INPUTS.md) for setup, topics,
 map bounds, and trajectory configuration.
 

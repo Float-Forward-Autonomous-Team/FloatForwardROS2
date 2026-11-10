@@ -34,17 +34,15 @@ class LocalSplineGuidance(Node):
         self.completed_goal = None
 
         map_qos = QoSProfile(
-            depth=1,  # keep only the last  
+            depth=1,  # keep only the last
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             reliability=ReliabilityPolicy.RELIABLE,
         )
 
-        self.create_subscription(OccupancyGrid, "/navigation/occupancy_map", self._on_map, map_qos)
-        self.create_subscription(
-            Odometry, "/navigation/boat_odometry", self._on_odometry, 10
-        )
-        self.create_subscription(Path, "/navigation/planned_path", self._on_route, map_qos)
-        self.spline_pub = self.create_publisher(Path, "/navigation/spline_path", map_qos)
+        self.create_subscription(OccupancyGrid, "/world_model/static_map", self._on_map, map_qos)
+        self.create_subscription(Odometry, "/localization/odometry", self._on_odometry, 10)
+        self.create_subscription(Path, "/planning/global_path", self._on_route, map_qos)
+        self.spline_pub = self.create_publisher(Path, "/planning/smoothed_path", map_qos)
         self.target_pub = self.create_publisher(PoseArray, "/guidance/target_position", 10)
         self.velocity_pub = self.create_publisher(Float64, "/guidance/target_velocity", 10)
         self.create_timer(1.0, self._update)
@@ -87,11 +85,7 @@ class LocalSplineGuidance(Node):
 
         grid, odometry, route = self.grid, self.odometry, self.route
         frame = grid.header.frame_id
-        if (
-            not frame
-            or odometry.header.frame_id != frame
-            or route.header.frame_id != frame
-        ):
+        if not frame or odometry.header.frame_id != frame or route.header.frame_id != frame:
             self._publish_empty("Map, boat pose, and A* route must share one frame")
             return
 
@@ -100,7 +94,7 @@ class LocalSplineGuidance(Node):
         goal_tolerance = self.get_parameter("goal_tolerance_m").value
         slowdown_distance = self.get_parameter("slowdown_distance_m").value
         safety_margin = self.get_parameter("safety_margin_m").value
-        
+
         if (
             not math.isfinite(lookahead)
             or lookahead <= 0
@@ -123,9 +117,7 @@ class LocalSplineGuidance(Node):
         if not route.poses:
             self._publish_empty("A* route is empty or no collision-free smoothed route exists")
             return
-        route_points = [
-            (pose.pose.position.x, pose.pose.position.y) for pose in route.poses
-        ]
+        route_points = [(pose.pose.position.x, pose.pose.position.y) for pose in route.poses]
         spline = generate_safe_spline(
             route_points,
             grid.data,

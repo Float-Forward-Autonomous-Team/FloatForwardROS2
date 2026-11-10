@@ -3,8 +3,8 @@
 import math
 
 
+# so that we avoid moving super close to docks
 
-# so that we avoid moving super close to docks 
 
 def check_safety_margin(grid_data, width, height, row, col, resolution, safety_margin):
     """Return whether the square clearance neighborhood is known and free."""
@@ -34,9 +34,8 @@ def check_safety_margin(grid_data, width, height, row, col, resolution, safety_m
                 return False
     return True
 
-def _is_free(
-    point, grid_data, width, height, origin_x, origin_y, resolution, safety_margin_m=3.0
-):
+
+def _is_free(point, grid_data, width, height, origin_x, origin_y, resolution, safety_margin_m=3.0):
     """Return whether a world point lies in a known free occupancy cell."""
     if resolution <= 0 or not math.isfinite(resolution):
         return False
@@ -49,12 +48,8 @@ def _is_free(
         0 <= col < width
         and 0 <= row < height
         and len(grid_data) == width * height
-        and check_safety_margin(
-            grid_data, width, height, row, col, resolution, safety_margin_m
-        )
+        and check_safety_margin(grid_data, width, height, row, col, resolution, safety_margin_m)
     )
-
-    
 
 
 def _segment_is_free(
@@ -183,10 +178,8 @@ def catmull_rom_spline(points, sample_spacing):
                     * (
                         2 * p1[axis]
                         + (-p0[axis] + p2[axis]) * t
-                        + (2 * p0[axis] - 5 * p1[axis] + 4 * p2[axis] - p3[axis])
-                        * t2
-                        + (-p0[axis] + 3 * p1[axis] - 3 * p2[axis] + p3[axis])
-                        * t3
+                        + (2 * p0[axis] - 5 * p1[axis] + 4 * p2[axis] - p3[axis]) * t2
+                        + (-p0[axis] + 3 * p1[axis] - 3 * p2[axis] + p3[axis]) * t3
                     )
                 )
             sampled.append(tuple(sample))
@@ -206,14 +199,13 @@ def generate_safe_spline(
         return simplified
 
     spline = catmull_rom_spline(simplified, resolution * 0.5)
-    if _path_is_free(
-        spline, data, width, height, origin_x, origin_y, resolution, safety_margin_m
-    ):
+    if _path_is_free(spline, data, width, height, origin_x, origin_y, resolution, safety_margin_m):
         return spline
     return simplified
 
 
-#(x,y) current world coordinates of the boat
+# (x,y) current world coordinates of the boat
+
 
 def line_of_sight_target(points, x, y, lookahead_m):
     """Return the point and heading at lookahead distance from the nearest route point."""
@@ -238,7 +230,7 @@ def line_of_sight_target(points, x, y, lookahead_m):
             continue
 
         # fraction of the segment that is closest to the boat's current position
-        fraction = max(        
+        fraction = max(
             0.0,
             min(1.0, ((x - start[0]) * dx + (y - start[1]) * dy) / length_squared),
         )

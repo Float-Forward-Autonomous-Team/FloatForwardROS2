@@ -97,7 +97,7 @@ class pid_controller(Node):
             PoseArray, "/guidance/target_position", self.waypoint_callback, 10
         )
         self.odometry = self.create_subscription(
-            Odometry, "/navigation/boat_odometry", self.odometry_callback, 10
+            Odometry, "/localization/odometry", self.odometry_callback, 10
         )
         self.gps_data = self.create_subscription(
             NavSatFix, "/wamv/sensors/gps/gps/fix", self.gps_data_callback, 10

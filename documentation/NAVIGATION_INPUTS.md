@@ -1,8 +1,8 @@
 # Navigation demo
 
-This demo runs the first part of the Guidance & Navigation architecture in
-simulation: a world model and a global planner that publishes an A* route for
-visualization. It publishes no actuator command. The default setup targets
+This demo runs the Guidance & Navigation chain in simulation: a world model, a
+global A* planner, path smoothing with line-of-sight guidance, and a PID
+controller that **drives the boat** to the demo goal. The default setup targets
 VRX's `wayfinding_task` world.
 
 ## Run
@@ -21,7 +21,7 @@ make sh
 ros2 launch boat navigation_demo.launch.py
 ```
 
-The launch starts six small processes:
+The launch starts eight small processes:
 
 - `gazebo_obstacles` spawns visible, collidable spheres and moves them along
   trajectories in `boat/config/moving_obstacles.yaml`.
@@ -31,22 +31,30 @@ The launch starts six small processes:
   stopped (static) and moving ones.
 - `navigation_monitor` subscribes and prints a one-second input summary.
 - `mission_manager` publishes the demo goal at `(-593, 241)` in the `map` frame.
-- `global_planner` publishes `/planning/global_path` (`nav_msgs/msg/Path`) for
-  RViz, replanning only when something relevant changes.
+- `global_planner` publishes `/planning/global_path` (`nav_msgs/msg/Path`),
+  replanning only when something relevant changes.
+- `local_spline_guidance` smooths the global path and publishes a lookahead
+  target point and a target speed once a second; it stops the boat at the goal.
+- `pid_controller` (Control) turns the target point and speed into engine angle
+  and thrust commands for the single WAM-V engine.
 
 ## Data flow
 
 ```
-Gazebo ──► sim_truth ──► /localization/odometry ─────────────────────┐
-                    └──► /perception/objects ──► world_model          │
-world SDF (prior) ─────────────────────────────► world_model          │
-                                                   │                  ▼
-                       /world_model/static_map ────┴──────────► global_planner
+Gazebo ──► sim_truth ──► /localization/odometry ───────────────────────┐
+                    └──► /perception/objects ──► world_model            │
+world SDF (prior) ─────────────────────────────► world_model            │
+                                                   │                    ▼
+                       /world_model/static_map ────┴──► global_planner, local_spline_guidance
                        /world_model/moving_objects  (local planner, later)
                        /world_model/landmarks       (task planner, later)
-mission_manager ──► /mission/goal ───────────────────────────► global_planner
-                                                                      │
-                                                    /planning/global_path
+mission_manager ──► /mission/goal ──► global_planner ──► /planning/global_path
+                                                                        │
+                                                        local_spline_guidance
+                                                                        │
+                          /guidance/target_position, /guidance/target_velocity
+                                                                        │
+                                                pid_controller ──► /wamv/thrusters/main/{pos,thrust}
 ```
 
 Planners read only Localization, world model and mission topics. Replacing
@@ -67,12 +75,16 @@ The Python code lives in `boat/boat/navigation/`, grouped by responsibility:
 | `planning/global_planner.py` | Subscribe to the static map, boat pose and goal; publish a path |
 | `planning/grid_astar.py` | Step costs from clearance; eight-connected A* |
 | `planning/path_geometry.py` | Distance from a point to a path |
+| `planning/path_smoothing.py` | Shortcut simplification, Catmull-Rom spline, lookahead target |
+| `planning/local_spline_guidance.py` | Smooth the route; publish target point, speed and stop |
 | `simulation/sim_truth.py` | Publish perfect boat state, GNSS and object tracks |
 | `simulation/scenario_map.py` | Rasterize Gazebo collision geometry; list top-level models |
 | `simulation/gazebo_obstacles.py` | Spawn and move physical Gazebo models |
 | `simulation/obstacle_trajectory.py` | Parse and evaluate configured obstacle paths |
 
-The ROS messages remain in `boat_interfaces/msg/`, the launch description in
+The PID controller lives outside `navigation/`, in `boat/boat/pid_controller.py`,
+because it belongs to Control. The ROS messages remain in `boat_interfaces/msg/`,
+the launch description in
 `boat/launch/`, and the trajectory YAML in `boat/config/`. The shared
 `scripts/apply_environment.py` helper copies a VRX world before launch. For the
 navigation targets, its `--keep-running` option gives each VRX scoring plugin
@@ -81,9 +93,10 @@ Standard competition targets omit that option.
 
 The mission manager publishes `/mission/goal` (`PoseStamped`) and
 `/mission/state` (`String`), and advances when it receives
-`/mission/task_done` (`Bool`). The demo does not publish task completion or move
-the boat, so its single goal remains active. The demo launch gives this goal a
-one-hour simulation-time timeout for inspection.
+`/mission/task_done` (`Bool`). Guidance stops the boat within 1 m of the goal
+but does not yet publish task completion, so the mission's single goal remains
+active. The demo launch gives this goal a one-hour simulation-time timeout for
+inspection.
 
 If the packages have not been built in the running container, use your normal
 `make colcon` workflow first.
@@ -101,6 +114,11 @@ If the packages have not been built in the running container, use your normal
 | `/world_model/landmarks` | `boat_interfaces/msg/TrackedObjectArray` | `world_model` | Top-level world models (buoys, posts, …); latched |
 | `/mission/goal` | `geometry_msgs/msg/PoseStamped` | `mission_manager` | Current demo target in the `map` frame |
 | `/planning/global_path` | `nav_msgs/msg/Path` | `global_planner` | Latest route from the boat to the goal; empty when there is none |
+| `/planning/smoothed_path` | `nav_msgs/msg/Path` | `local_spline_guidance` | Smoothed route with path headings, for visualization |
+| `/guidance/target_position` | `geometry_msgs/msg/PoseArray` | `local_spline_guidance` | One lookahead target in `map`; empty means stop |
+| `/guidance/target_velocity` | `std_msgs/msg/Float64` | `local_spline_guidance` | Target forward speed in m/s |
+| `/wamv/thrusters/main/pos` | `std_msgs/msg/Float64` | `pid_controller` | Engine angle in radians (±45°) |
+| `/wamv/thrusters/main/thrust` | `std_msgs/msg/Float64` | `pid_controller` | Engine thrust in newtons |
 
 Everything uses Gazebo's local east-north-up `map` frame in metres.
 
@@ -181,6 +199,31 @@ boat or goal is outside the map, or the boat or goal is inside the inflated
 region. When no route exists, the planner publishes an empty path and tries
 again only after a trigger.
 
+## Guidance and control
+
+Once a second, `local_spline_guidance` takes the latest global path, removes
+points that a straight, collision-checked shortcut can skip, and draws a
+Catmull-Rom spline through the rest. Its collision check requires a free square
+of `safety_margin_m` (default 1.5 m) around each sample; if the spline fails
+the check it falls back to the straight shortcuts. It then picks the point
+`lookahead_distance_m` (default 5 m) ahead of the boat's projection on the
+smoothed route and publishes it with `target_speed_mps` (default 1 m/s),
+reduced linearly within `slowdown_distance_m` (5 m) of the goal. Within
+`goal_tolerance_m` (1 m) of the goal it publishes an empty target and speed 0.
+Any missing or invalid input also produces an empty target, which stops the
+boat.
+
+`pid_controller` steers the engine towards the target point (heading PID,
+engine angle limited to ±45°) and sets thrust from the speed error (speed PID,
+−1000 to 2300 N). With a target in the `map` frame it uses
+`/localization/odometry`; an empty target sets angle and thrust to zero.
+
+Smoothing checks a smaller margin (1.5 m) than the global planner's inflation
+(3 m), so shortcuts plus tracking error can bring the boat inside the planner's
+inflated region. The planner then withdraws the path, guidance stops the boat,
+and planning resumes once the boat is clear again; in the wayfinding run this
+caused two pauses of a few seconds.
+
 Change parameters while running, for example:
 
 ```bash
@@ -188,7 +231,7 @@ ros2 param set /global_planner inflation_radius_m 2.5
 ros2 param set /global_planner proximity_weight 0.0
 ```
 
-The planner does not smooth turns or output speed and heading. It rejects
+The planner itself does not smooth turns; `local_spline_guidance` does. It rejects
 unknown cells and prevents diagonal moves through blocked corners.
 
 ## Scripted obstacles
