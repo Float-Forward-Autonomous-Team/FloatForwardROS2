@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # mesa-utils gives glxinfo/glxgears for diagnosing software rendering.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-jazzy-ros-gz \
+      ros-jazzy-foxglove-bridge \
       mesa-utils \
  && rm -rf /var/lib/apt/lists/*
 
