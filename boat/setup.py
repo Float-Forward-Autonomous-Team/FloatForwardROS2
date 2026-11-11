@@ -27,6 +27,15 @@ setup(
     entry_points={
         "console_scripts": [
             "heartbeat = boat.heartbeat:main",
+            "sim_truth = boat.navigation.simulation.sim_truth:main",
+            "gazebo_obstacles = boat.navigation.simulation.gazebo_obstacles:main",
+            "navigation_monitor = boat.navigation.navigation_monitor:main",
+            "world_model = boat.navigation.world_model.world_model:main",
+            "global_planner = boat.navigation.planning.global_planner:main",
+            "local_planner = boat.navigation.planning.local_planner:main",
+            "local_spline_guidance =boat.navigation.planning.local_spline_guidance:main",
+            "mission_manager = boat.navigation.mission_manager:main",
+            "pid_controller = boat.pid_controller:main",
         ],
     },
 )

@@ -70,6 +70,22 @@ task world — good for day-to-day dev):
 make vrx WORLD=wayfinding_task
 ```
 
+For navigation development with synthetic perception, use `make vrx-nav` instead.
+It keeps GNSS and IMU but omits the three cameras and LiDAR from the generated
+boat, reducing rendering work. Pass `WORLD=<name>` to choose a different task
+world. Restart the VRX launch after switching profiles; `make build` is not
+needed for this YAML profile.
+
+The navigation demo adds simulated Localization and Perception topics, a world
+model (collision-derived static map, moving objects, landmarks), physical
+moving obstacles, a global A* route to a demo goal, smoothing with
+line-of-sight guidance, and a PID controller.
+After starting `wayfinding_task`, run
+`ros2 launch boat navigation_demo.launch.py` in a second container shell.
+The boat drives itself to the goal and stops there. See
+[NAVIGATION_INPUTS.md](documentation/NAVIGATION_INPUTS.md) for setup, topics,
+map bounds, and trajectory configuration.
+
 Other task worlds: `navigation_task`, `follow_path_task`, `scan_dock_deliver_task`,
 `perception_task`, `acoustic_perception_task`, `acoustic_tracking_task`,
 `gymkhana_task`, `wildlife_task`.
@@ -107,16 +123,19 @@ FloatForwardROS2/
 ├── .github/workflows/test-pipeline.yml   CI: pre-commit + docker build + colcon build
 ├── documentation/
 │   ├── SIMULATION.md          how the VRX simulation works
+│   ├── NAVIGATION_INPUTS.md   navigation demo: world model, global planner, topics
 │   └── ROS_CHEATSHEET.md      every topic, message type and node
 ├── scripts/                   helper scripts run by the Makefile (apply_boat_params.py, apply_environment.py)
+├── boat_interfaces/           ROS messages for tracked navigation objects
 └── boat/                      ROS 2 package (ament_python)
     ├── package.xml            dependencies + build type
     ├── setup.py  setup.cfg    entry points, data files
     ├── resource/boat          ament index marker (empty, required)
     ├── boat/
     │   ├── __init__.py
-    │   └── heartbeat.py       example node -> `ros2 run boat heartbeat`
-    ├── launch/boat.launch.py  example launch
+    │   ├── heartbeat.py       example node -> `ros2 run boat heartbeat`
+    │   └── navigation/        mission manager, monitor, world_model/, planning/, simulation/
+    ├── launch/                example and navigation demo launch files
     └── config/
         ├── params.yaml                  example parameters
         ├── wamv_single_thruster.yaml    engine position
@@ -127,11 +146,15 @@ FloatForwardROS2/
 
 ## Add a node
 
-1. Copy `boat/boat/heartbeat.py` as a starting point for `boat/boat/<new_node_name>.py`.
+1. Copy `boat/boat/heartbeat.py` as a starting point. Put navigation code under
+   `boat/boat/navigation/`; keep unrelated nodes in `boat/boat/`.
 2. Register it in `boat/setup.py`, under `entry_points -> console_scripts`:
    ```python
-   "<name> = boat.<name>:main",
+   "<name> = boat.navigation.<module>:main",
    ```
+   Include the subpackage for code in `navigation/world_model/`,
+   `navigation/planning/` or `navigation/simulation/`. For a module directly under `boat/boat/`, use
+   `boat.<module>:main`.
 3. `make colcon`
 4. `make sh`, then `ros2 run boat <name>`
 

@@ -1,0 +1,13 @@
+# Navigation development profile: omit rendering-heavy cameras and LiDAR.
+# Keep GNSS and IMU until a boat-state or ground-truth odometry publisher exists.
+wamv_gps:
+  - name: gps_wamv
+    x: -0.85
+    y: 0.0
+    z: 1.3
+
+wamv_imu:
+  - name: imu_wamv
+    x: 0.3
+    y: -0.2
+    z: 1.3
