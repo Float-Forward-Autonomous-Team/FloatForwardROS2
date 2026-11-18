@@ -30,6 +30,7 @@ setup(
             "obstacle_truth = boat.obstacle_truth:main",
             "circle_driver = boat.circle_driver:main",
             "gps_track = boat.gps_track:main",
+            "public_camera = boat.public_camera:main",
         ],
     },
 )

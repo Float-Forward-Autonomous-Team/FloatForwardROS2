@@ -1,11 +1,20 @@
 // DTU Float Forward public live page.
 // Energy boat: replays the Monaco 2026 GPS data (Database2026/race_data) as if live, until the read-only feed exists.
-// USV-01 (AI boat): live from foxglove_bridge (simulator now, the Jetson later).
+// USV-01 (AI boat): live from the read-only foxglove_bridge (simulator now, the Jetson later),
+// or a short recording on a loop when it is not streaming.
 // Only position, speed, heading and camera data are shown; nothing here can command a boat.
 
 import { connectBridge } from "./bridge.js";
+import { connectReplay } from "./replay.js";
 
-const BRIDGE_URL = new URLSearchParams(location.search).get("ws") ?? "ws://localhost:8765";
+// ?ws=wss://… streams live (through the Cloudflare tunnel, see `make tunnel`); ?replay forces the
+// recording. With neither, the page uses the local public bridge on your own machine and the
+// recording everywhere else. The public bridge (port 8766) is read-only; 8765 is the team's.
+const params = new URLSearchParams(location.search);
+const LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
+const BRIDGE_URL = params.has("replay") ? null : params.get("ws") ?? (LOCAL ? "ws://localhost:8766" : null);
+const REPLAY_URL = new URL("data/usv01/", location.href).href;
+const LIVE_WAIT_MS = 10000; // no live connection by then: play the recording instead
 const ENERGY_DATA = "data/energy_monaco_2026.json";
 const DEFAULT_RACE = "speedrecord";
 
@@ -41,7 +50,7 @@ const AI_TOPICS = {
   detections: "/detections", // published by the future detection node
   inference: "/detections/inference_ms",
 };
-const cameraTopic = (name) => `/wamv/sensors/cameras/${name}_camera_sensor/optical/image_raw`;
+const cameraTopic = (name) => `/public/cameras/${name}/compressed`; // JPEGs from the public_camera node
 
 const $ = (id) => document.getElementById(id);
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -519,30 +528,21 @@ function onObstacles(msg) {
 const onDetections = (msg) => (ai.detections = msg);
 const onInference = (m) => (ai.inferenceMs = m.data);
 
+// sensor_msgs/CompressedImage (JPEG), from the bridge or the recording
+let decoding = false;
 function onImage(img) {
-  if (!ai.image || ai.image.width !== img.width || ai.image.height !== img.height) ai.image = new ImageData(img.width, img.height);
-  const src = img.data;
-  const dst = ai.image.data;
-  const n = img.width * img.height;
-  if (img.encoding === "rgb8" || img.encoding === "bgr8") {
-    const [r, b] = img.encoding === "rgb8" ? [0, 2] : [2, 0];
-    for (let i = 0, j = 0; i < n; i++, j += 3) {
-      dst[i * 4] = src[j + r];
-      dst[i * 4 + 1] = src[j + 1];
-      dst[i * 4 + 2] = src[j + b];
-      dst[i * 4 + 3] = 255;
-    }
-  } else if (img.encoding === "rgba8") {
-    dst.set(src.subarray(0, n * 4));
-  } else if (img.encoding === "mono8") {
-    for (let i = 0; i < n; i++) {
-      dst[i * 4] = dst[i * 4 + 1] = dst[i * 4 + 2] = src[i];
-      dst[i * 4 + 3] = 255;
-    }
-  } else {
-    return;
-  }
-  ai.image.dirty = true;
+  if (decoding) return; // still drawing the previous frame: skip this one
+  decoding = true;
+  const camera = ai.camera;
+  createImageBitmap(new Blob([img.data], { type: `image/${img.format}` }))
+    .then((bitmap) => {
+      if (camera !== ai.camera) return bitmap.close();
+      ai.image?.close?.();
+      ai.image = bitmap;
+      ai.image.dirty = true;
+    })
+    .catch(() => {})
+    .finally(() => (decoding = false));
 }
 
 function drawCamera() {
@@ -554,7 +554,7 @@ function drawCamera() {
     cam.width = overlay.width = ai.image.width;
     cam.height = overlay.height = ai.image.height;
   }
-  cam.getContext("2d").putImageData(ai.image, 0, 0);
+  cam.getContext("2d").drawImage(ai.image, 0, 0);
   $("cam-empty").hidden = true;
 
   // boxes from the detection node (foxglove_msgs/ImageAnnotations), in image pixels
@@ -621,8 +621,9 @@ const objectRows = (objects, emptyText) =>
 
 function renderAiText(s) {
   const nearest = s.objects[0];
-  const connected = ai.status === "connected";
-  $("map-title").textContent = "Regatta course, simulator";
+  const replaying = ai.status === "replay";
+  const connected = ai.status === "connected" || replaying;
+  $("map-title").textContent = replaying ? "Regatta course, simulator recording" : "Regatta course, simulator";
   let sentence;
   if (!connected) sentence = ai.status === "connecting" ? "Connecting to USV-01…" : "USV-01 is not streaming right now. This page reconnects by itself.";
   else if (!s.pos) sentence = "Connected. Waiting for the boat's position…";
@@ -639,7 +640,8 @@ function renderAiText(s) {
   $("r-dist").innerHTML = s.pos ? distanceText(s.distance) : DASH;
   $("r-4").innerHTML = nearest ? `${nearest.dist.toFixed(1)}<small>m</small>` : DASH;
 
-  if (connected && s.silent <= AI_LIVE_S) setStatus("live", "Online", `updated ${age(s.silent)} ago`);
+  if (replaying) setStatus("neutral", "Replay", "recorded run, on a loop");
+  else if (connected && s.silent <= AI_LIVE_S) setStatus("live", "Online", `updated ${age(s.silent)} ago`);
   else if (connected) setStatus("warn", s.pos ? "No signal" : "Connected", s.pos ? `last fix ${age(s.silent)} ago` : "");
   else if (ai.status === "connecting") setStatus("warn", "Connecting", "");
   else setStatus("neg", "Offline", "");
@@ -694,7 +696,7 @@ function aiHandlers() {
     [AI_TOPICS.detections]: onDetections,
     [AI_TOPICS.inference]: onInference,
   };
-  // a raw frame is about 2.7 MB: stream it only while someone is looking at it
+  // stream the camera only while someone is looking at it
   if (app.boat === "ai" && app.view === "cameras") handlers[cameraTopic(ai.camera)] = onImage;
   return handlers;
 }
@@ -708,6 +710,27 @@ for (const button of document.querySelectorAll("[data-camera]")) {
     pressOnly("[data-camera]", button);
     ai.bridge?.setHandlers(aiHandlers());
   });
+}
+
+// Clear the trails when the recording starts over, so the map does not draw a jump.
+function resetAiTrack() {
+  ai.recent = [];
+  ai.past = [];
+  ai.pastDistance = 0;
+  ai.lastFix = null;
+}
+
+const startReplay = () =>
+  (ai.bridge = connectReplay(REPLAY_URL, aiHandlers(), { onStatus: (status) => (ai.status = status), onLoop: resetAiTrack }));
+
+function connectAi() {
+  if (!BRIDGE_URL) return startReplay();
+  ai.bridge = connectBridge(BRIDGE_URL, aiHandlers(), { onStatus: (status) => (ai.status = status) });
+  setTimeout(() => {
+    if (ai.status === "connected") return;
+    ai.bridge.close();
+    startReplay();
+  }, LIVE_WAIT_MS);
 }
 
 // ---------- shared: status, switching ----------
@@ -748,7 +771,7 @@ function setBoat(boat) {
   $("p4-label").textContent = isAi ? "GPS rate" : "Time on the water";
   map.scale = isAi ? AI_SCALE : ENERGY_SCALE;
   setFollow(true);
-  if (isAi && !ai.bridge) ai.bridge = connectBridge(BRIDGE_URL, aiHandlers(), { onStatus: (status) => (ai.status = status) });
+  if (isAi && !ai.bridge) connectAi();
   ai.bridge?.setHandlers(aiHandlers());
   lastText = lastChart = lastAiChart = 0;
   chartKey = "";

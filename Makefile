@@ -1,4 +1,4 @@
-.PHONY: build up sh colcon vrx foxglove obstacles circles track race live down clean
+.PHONY: build up sh colcon vrx foxglove obstacles circles track race live publish tunnel record replay-data down clean
 
 WORLD ?= stationkeeping_task
 HEADLESS ?= False
@@ -68,6 +68,35 @@ race: up  ## run a race stage with the Foxglove dashboard (start `make vrx` firs
 # runs on the Mac, not in the container: the public live page prototype, a static page that reads foxglove_bridge directly
 live:    ## serve the public live page on http://localhost:8090 (AI tab needs `make race`)
 	python3 -m http.server 8090 --bind 127.0.0.1 --directory live
+
+# runs on the Mac: deploy live/ to Vercel as a static site. The first run asks you to log in
+# and to name the project; the name becomes the address, <name>.vercel.app.
+publish: ## publish the public live page to Vercel (production)
+	@npx --yes vercel whoami >/dev/null 2>&1 || npx --yes vercel login
+	npx --yes vercel deploy live --prod
+
+# runs on the Mac: share the public bridge (port 8766, read-only) through a Cloudflare quick tunnel
+tunnel:  ## make USV-01 live on the public page for anyone with the printed link (needs `make race`, `brew install cloudflared`)
+	./scripts/public_tunnel.sh
+
+RECORD_S ?= 75
+# the public page's topics only, so the recording holds nothing the page could not show anyway
+PUBLIC_TOPICS = /wamv/sensors/gps/gps/fix /gps_track /wamv/sensors/imu/imu/data /obstacles/markers \
+	/detections /detections/inference_ms /public/cameras/front_left/compressed
+
+record: up  ## record RECORD_S seconds (default 75) of what the public page shows, into recordings/ (needs `make race`)
+	@# -T and </dev/null: with a terminal attached, ros2 bag record reads the keyboard for its
+	@# pause key and gets stopped by the shell, because timeout runs it in the background.
+	@# timeout's own exit code 124 is the normal end of the recording, not an error.
+	docker compose exec -T ros bash -lc "$(ROS_ENV) && mkdir -p /ws/src/boat/recordings && \
+		bag=/ws/src/boat/recordings/usv01_$$(date +%Y%m%d_%H%M%S) && \
+		{ timeout -s INT $(RECORD_S) ros2 bag record -s mcap -o \$$bag --topics $(PUBLIC_TOPICS) < /dev/null || [ \$$? -eq 124 ]; } && \
+		ros2 bag info \$$bag"
+
+# the newest recording unless BAG=recordings/<name> is given
+BAG ?= $(shell ls -d recordings/usv01_* 2>/dev/null | tail -1)
+replay-data: up  ## turn a recording into the replay the public page loops (live/data/usv01); BAG=recordings/<name>
+	docker compose exec ros bash -lc "$(ROS_ENV) && cd /ws/src/boat && python3 live/tools/build_usv_replay.py $(BAG) live/data/usv01"
 
 track: up  ## publish the boat's GPS track as GeoJSON on /gps_track for Foxglove's Map panel
 	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 run boat gps_track"

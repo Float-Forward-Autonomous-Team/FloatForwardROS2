@@ -12,3 +12,9 @@ __pycache__/
 .idea/
 .DS_Store
 .ruff_cache/
+
+# rosbag recordings (make record); only the converted replay in live/data/usv01 is committed
+recordings/
+
+# Vercel project link, created by the first `make publish`
+live/.vercel/

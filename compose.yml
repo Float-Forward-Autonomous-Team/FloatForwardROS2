@@ -13,7 +13,8 @@ services:
     shm_size: "512mb"           # Gazebo's Ogre2 renderer + Xvfb
     ports:
       - "127.0.0.1:6080:6080"   # noVNC web UI
-      - "127.0.0.1:8765:8765"   # foxglove_bridge websocket
+      - "127.0.0.1:8765:8765"   # foxglove_bridge websocket (team, full access)
+      - "127.0.0.1:8766:8766"   # read-only foxglove_bridge for the public live page
 
 volumes:
   ros-build:
