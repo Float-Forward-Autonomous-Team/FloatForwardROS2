@@ -7,7 +7,7 @@ from boat_interfaces.msg import TrackedObjectArray
 from geometry_msgs.msg import Vector3Stamped
 from nav_msgs.msg import OccupancyGrid, Odometry
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import NavSatFix
 
 
@@ -15,7 +15,7 @@ class NavigationMonitor(Node):
     """Minimal navigation node: observe input contracts and log their contents."""
 
     def __init__(self):
-        """Subscribe to truth inputs and report them once per second."""
+        """Subscribe to localization and world model outputs and report them once per second."""
         super().__init__("navigation_monitor")
         self.fix = None
         self.velocity = None
@@ -23,16 +23,19 @@ class NavigationMonitor(Node):
         self.map_size = None
         self.tracks = None
         sensor_qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
-        self.create_subscription(NavSatFix, "navigation/gps_fix", self._on_fix, sensor_qos)
-        self.create_subscription(
-            Vector3Stamped, "navigation/gps_velocity", self._on_velocity, sensor_qos
+        latched = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
         )
+        self.create_subscription(NavSatFix, "/localization/gps_fix", self._on_fix, sensor_qos)
         self.create_subscription(
-            Odometry, "navigation/boat_odometry", self._on_odometry, sensor_qos
+            Vector3Stamped, "/localization/gps_velocity", self._on_velocity, sensor_qos
         )
-        self.create_subscription(OccupancyGrid, "navigation/occupancy_map", self._on_map, 1)
+        self.create_subscription(Odometry, "/localization/odometry", self._on_odometry, sensor_qos)
+        self.create_subscription(OccupancyGrid, "/world_model/static_map", self._on_map, latched)
         self.create_subscription(
-            TrackedObjectArray, "navigation/dynamic_objects", self._on_tracks, 10
+            TrackedObjectArray, "/world_model/moving_objects", self._on_tracks, 10
         )
         self.create_timer(1.0, self._report)
         self.get_logger().info("Navigation monitor started; it publishes no commands")
