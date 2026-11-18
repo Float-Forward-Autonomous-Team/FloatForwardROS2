@@ -179,6 +179,37 @@ make race THRUST=800 STEER=0.2   # all of it, with a different circle
   first-time steps above.
 - **`foxglove_msgs` or `obstacle_truth` errors after switching branches:** run `make colcon`.
 
+### Next steps: race route and race panel
+
+The goal is a race route made of waypoints that the boat follows by itself, shown in Foxglove
+together with a custom race panel. A waypoint is a GPS position the boat must reach. The route
+is a list of waypoints in order, and the boat moves on to the next one once it is close enough.
+
+**Race route (waypoints)**
+
+- [ ] Define the route in a config file, for example `boat/config/race_route.yaml`: a list of
+      waypoints (latitude, longitude) and an arrival radius in metres
+- [ ] `waypoint_follower` node: reads GPS and IMU, steers toward the current waypoint by rotating
+      the engine (`/wamv/thrusters/main/pos`), sets thrust (`/wamv/thrusters/main/thrust`), and
+      switches to the next waypoint inside the arrival radius
+- [ ] Publish the route for Foxglove: as GeoJSON for the Map panel, and as markers for the 3D panel,
+      with the current waypoint highlighted
+- [ ] Add the follower to `race.launch.py` in place of `circle_driver`, with a `make` target to run it
+- [ ] Test it in the `wayfinding_task` world, which scores how accurately the boat reaches waypoints
+
+**Race panel**
+
+- [ ] `race_status` node publishing the values the panel shows:
+  - [ ] speed (m/s and knots), from GPS velocity
+  - [ ] heading (degrees), from the IMU
+  - [ ] distance to the next waypoint (metres), from the follower
+  - [ ] remaining battery (%), from a simple energy model that integrates thrust over time
+        (the simulator has no battery, so this has to be modelled)
+- [ ] Custom Foxglove extension panel (TypeScript) that shows these values as a race display
+- [ ] Add the panel to the `Race` tab of `foxglove/dashboard_layout.json`
+- [ ] Document the new topics, nodes and `make` targets in this README and in
+      [ROS_CHEATSHEET.md](documentation/ROS_CHEATSHEET.md)
+
 ## Repo layout
 
 ```
