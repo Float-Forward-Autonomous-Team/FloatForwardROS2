@@ -91,6 +91,8 @@ topics, TF frames, waves and wind, launching, and running the same nodes against
 simulated and real sensors.
 [ROS_CHEATSHEET.md](documentation/ROS_CHEATSHEET.md) is the quick reference: every topic, message
 type and node.
+[TELEMETRY_AI_CLASS.md](documentation/TELEMETRY_AI_CLASS.md) explains how the data gets from the
+boat to shore, and how to test it with two computers.
 
 ### Foxglove (viewing the boat's sensors)
 
@@ -255,7 +257,8 @@ FloatForwardROS2/
 ├── .github/workflows/test-pipeline.yml   CI: pre-commit + docker build + colcon build
 ├── documentation/
 │   ├── SIMULATION.md          how the VRX simulation works
-│   └── ROS_CHEATSHEET.md      every topic, message type and node
+│   ├── ROS_CHEATSHEET.md      every topic, message type and node
+│   └── TELEMETRY_AI_CLASS.md  from the boat to shore: data path, Cloudflare, two-computer tests
 ├── foxglove/                  dashboard_layout.json, the team's Foxglove layout
 ├── scripts/                   helper scripts run by the Makefile (apply_boat_params.py, apply_environment.py)
 └── boat/                      ROS 2 package (ament_python)
