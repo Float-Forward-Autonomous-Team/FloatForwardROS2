@@ -1,0 +1,36 @@
+# Perception nodes in the test slalom (`make slalom`), for the sensors in wamv_two_cameras.yaml.
+# PLACEHOLDER: camera and lidar positions are not decided for the real boat. Measure again
+# whenever a sensor moves.
+
+/lidar_obstacles:
+  ros__parameters:
+    min_range: 3.6     # m, our own engine is 3.5 m behind the lidar
+    max_range: 40.0    # m
+    # The lidar is pitched down, so its frame rises behind the boat and the default min_z
+    # (-1.5) would drop everything astern. Simulated water gives no returns, so no height
+    # cut is needed here; on the real boat it is.
+    min_z: -100.0
+
+/water_segmentation:
+  ros__parameters:
+    # our own hulls in the front camera, as x,y fractions of the image, with a margin
+    own_boat_polygons: "0.0,1.0 0.12,0.79 0.16,0.73 0.23,0.73 0.25,0.79 0.23,1.0;
+      1.0,1.0 0.88,0.79 0.84,0.73 0.77,0.73 0.75,0.79 0.77,1.0"
+
+/water_scan:
+  ros__parameters:
+    camera_x: 0.75            # m forward of the boat's centre
+    camera_y: 0.0             # m to port
+    camera_height: 1.6        # m above the water
+    camera_pitch_deg: 15.0    # tilted down
+    ignore_bottom: 0.28       # share of the image skipped in the corners, next to our hulls
+    ignore_left: 0.28
+    ignore_right: 0.28
+
+/yolo_detector:
+  ros__parameters:
+    seconds_between_frames: 1.0
+
+/yolo_detector_rear:
+  ros__parameters:
+    seconds_between_frames: 1.0

@@ -1,0 +1,40 @@
+# Sensor layout with our two cameras, one facing forward and one facing aft.
+# Used by `make vrx-race`. Same format as wamv_sensors.yaml.
+#
+# PLACEHOLDER: the real camera and lidar models and mounting positions are not
+# decided yet. These are the stock WAM-V sensor positions; the rear camera is placed
+# where it sees past the GPS dome. Replace them once the real positions are measured.
+
+wamv_camera:
+  - name: front_camera
+    x: 0.75
+    y: 0.0
+    z: 1.5
+    P: ${radians(15)}
+  - name: rear_camera
+    x: -0.72
+    y: 0.0
+    z: 1.75                  # high enough to see over the GPS dome at x -0.85
+    P: ${radians(15)}
+    Y: ${radians(180)}
+    post_Y: ${radians(180)}  # turns the mount too, otherwise its post is in front of the lens
+
+lidar:
+  - name: lidar_wamv
+    type: 16_beam
+    x: 0.7
+    y: 0.0
+    z: 1.8
+    P: ${radians(8)}
+
+wamv_gps:
+  - name: gps_wamv
+    x: -0.85
+    y: 0.0
+    z: 1.3
+
+wamv_imu:
+  - name: imu_wamv
+    x: 0.3
+    y: -0.2
+    z: 1.3

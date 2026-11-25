@@ -12,3 +12,18 @@ __pycache__/
 .idea/
 .DS_Store
 .ruff_cache/
+
+# rosbag recordings (make record); only the converted replay in live/data/usv01 is committed
+recordings/
+
+# model weights: too big for git (see documentation/PERCEPTION.md on perception/first-nodes)
+models/*.onnx
+models/*.pt
+models/*.csv
+datasets/
+
+# local instructions: race, report and sensor notes (internal, never commit)
+CLAUDE.local.md
+
+# Vercel project link, created by the first `make publish`
+live/.vercel/

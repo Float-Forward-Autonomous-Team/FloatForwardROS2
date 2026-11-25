@@ -92,6 +92,154 @@ simulated and real sensors.
 [ROS_CHEATSHEET.md](documentation/ROS_CHEATSHEET.md) is the quick reference: every topic, message
 type and node.
 
+### Foxglove (viewing the boat's sensors)
+
+[Foxglove](https://foxglove.dev/) shows live ROS topics: camera images, the lidar point
+cloud, the GPS position and plots. It runs in your browser, with nothing to install, and
+connects to `foxglove_bridge`, which runs inside the container and streams the topics over a
+WebSocket on port 8765.
+
+**First time only.** The bridge is installed in the Docker image, so rebuild the image and
+the workspace:
+
+```bash
+make build     # installs foxglove_bridge and foxglove_msgs
+make down      # the next `make` command then starts a container from the new image
+make colcon    # registers the new nodes
+```
+
+If `make colcon` complains about `--merge-install`, your build volumes come from an older
+build. Run `make clean`, then `make colcon` again.
+
+**Every time.** Use two terminals:
+
+```bash
+make vrx WORLD=sydney_regatta   # terminal 1: the simulator; wait until the boat has spawned
+make race                       # terminal 2: foxglove_bridge plus the nodes the dashboard uses
+```
+
+`sydney_regatta` has no task, so the boat stays pinned to its start platform until `make race`
+releases it. Start `make race` soon after the boat appears, because the release only happens
+during the driver's first few seconds.
+
+**Warning:** `make race` also runs `circle_driver`, which frees the boat and drives it in
+circles. If you want to look at the sensors with the boat left alone, run `make foxglove` in
+terminal 2 instead. It starts only the bridge. Add `make obstacles` in a third terminal to get
+the ground-truth markers.
+
+**Connect Foxglove:**
+
+1. Open [app.foxglove.dev](https://app.foxglove.dev) in your browser and sign in if it asks you
+   to. If your browser won't connect, use the
+   [desktop app](https://foxglove.dev/download) instead; the steps are the same.
+2. Choose **Open connection**, then **Foxglove WebSocket**, and enter `ws://localhost:8765`.
+3. Import the team layout from the **Layouts** menu: **Import from file**, then pick
+   `foxglove/dashboard_layout.json` from this repo. You only need to do this once.
+
+The layout has four tabs:
+
+| Tab           | What it shows                                                         |
+|---------------|-----------------------------------------------------------------------|
+| `Race`        | Front left camera, 3D view, GPS map, engine thrust and angle          |
+| `Camera`      | Front left and front right cameras side by side                       |
+| `LiDAR`       | Point cloud with obstacle markers, far left camera                    |
+| `Boat status` | GPS map, VRX task info, plots of thrust, IMU and wind                 |
+
+**For perception work.** Use these topics:
+
+| Topic                                                                  | Type                         |
+|------------------------------------------------------------------------|------------------------------|
+| `/wamv/sensors/cameras/front_left_camera_sensor/optical/image_raw`     | `sensor_msgs/msg/Image`      |
+| `/wamv/sensors/cameras/front_right_camera_sensor/optical/image_raw`    | `sensor_msgs/msg/Image`      |
+| `/wamv/sensors/cameras/far_left_camera_sensor/optical/image_raw`       | `sensor_msgs/msg/Image`      |
+| `/wamv/sensors/lidars/lidar_wamv_sensor/points`                        | `sensor_msgs/msg/PointCloud2`|
+| `/obstacles/markers` (simulation only: Gazebo's true obstacle positions) | `visualization_msgs/msg/MarkerArray` |
+
+`/obstacles/markers` is ground truth, so you can compare your detections against it. It only
+exists in simulation. Any topic your own node publishes shows up in Foxglove automatically,
+so you can add it to a panel without changing the bridge.
+
+**The other commands:**
+
+```bash
+make foxglove   # only foxglove_bridge
+make obstacles  # only the ground-truth obstacle markers
+make circles    # only the circle driver; change it with THRUST=<newtons> STEER=<radians>
+make track      # only the GPS track, as GeoJSON on /gps_track for a Map panel
+make race THRUST=800 STEER=0.2   # all of it, with a different circle
+```
+
+**Test race (slalom).** A simple slalom to try the race view: the boat weaves through four buoys
+22 m apart, rounds a green end buoy and weaves back. It follows the known buoy positions on GPS
+and IMU. The perception nodes run next to it and show what they see; they do not steer.
+
+```bash
+make colcon           # first time only
+make perception-deps  # YOLO and water segmentation; again after every `make down`
+make vrx-race   # terminal 1: simulator with a front and a rear camera, and lighter sensors
+make slalom     # terminal 2, once the boat has spawned
+```
+
+Import `foxglove/slalom_layout.json` in Foxglove. It has three tabs: `Race`, `Detection` and
+`Rear detection` (needs `REAR_DETECTION=true`).
+
+| Node | Shows | Needs |
+|---|---|---|
+| `lidar_obstacles` | obstacle boxes on `/perception/obstacle_markers` | nothing extra |
+| `yolo_detector` | `/perception/yolo_overlay` | `models/buoys_best.pt` (from Jana) or `models/yolo26s.pt` |
+| `water_segmentation` | `/perception/water_mask`, `/perception/water_overlay` | `models/ewasr_resnet18_lars.onnx` (from Antonio) or `models/ewasr_resnet18.onnx` |
+| `combined_overlay` | detections and segmentation in one picture | the YOLO node |
+| `water_scan` | distances on `/perception/water_scan` | the segmentation node |
+
+The nodes come from branch `perception/first-nodes`. Model files are not in git. A camera node that
+cannot start is left out with a message. `make slalom PERCEPTION=false` runs without any of them;
+`REAR_DETECTION=true` adds YOLO on the rear camera. Stock YOLO does not know our buoys.
+
+Change the course in
+`boat/config/race_slalom.yaml`. The start delay, gate scoring and race time use simulation time.
+To race again, stop both with Ctrl+C and start again, so the boat is back on its start platform.
+
+**If something doesn't work:**
+
+- **`port is already allocated`:** another container is using port 6080 or 8765, often a second
+  copy of this repo. Find it with `docker ps` and stop it first.
+- **Foxglove can't connect:** make sure `make race` or `make foxglove` is still running. Only
+  one bridge can use the port, so don't run both at once.
+- **`Package 'foxglove_bridge' not found`:** the container uses the old image. Run the
+  first-time steps above.
+- **`foxglove_msgs` or `obstacle_truth` errors after switching branches:** run `make colcon`.
+
+### Next steps: race route and race panel
+
+The goal is a race route made of waypoints that the boat follows by itself, shown in Foxglove
+together with a custom race panel. A waypoint is a GPS position the boat must reach. The route
+is a list of waypoints in order, and the boat moves on to the next one once it is close enough.
+
+**Race route (waypoints)**
+
+- [ ] Define the route in a config file, for example `boat/config/race_route.yaml`: a list of
+      waypoints (latitude, longitude) and an arrival radius in metres
+- [ ] `waypoint_follower` node: reads GPS and IMU, steers toward the current waypoint by rotating
+      the engine (`/wamv/thrusters/main/pos`), sets thrust (`/wamv/thrusters/main/thrust`), and
+      switches to the next waypoint inside the arrival radius
+- [ ] Publish the route for Foxglove: as GeoJSON for the Map panel, and as markers for the 3D panel,
+      with the current waypoint highlighted
+- [ ] Add the follower to `race.launch.py` in place of `circle_driver`, with a `make` target to run it
+- [ ] Test it in the `wayfinding_task` world, which scores how accurately the boat reaches waypoints
+
+**Race panel**
+
+- [ ] `race_status` node publishing the values the panel shows:
+  - [ ] speed (m/s and knots), from GPS velocity
+  - [ ] heading (degrees), from the IMU
+  - [ ] distance to the next waypoint (metres), from the follower
+  - [ ] remaining battery (%), from a simple energy model that integrates thrust over time
+        (the simulator has no battery, so this has to be modelled)
+- [ ] Custom Foxglove extension panel (TypeScript) that shows these values as a race display
+- [ ] Add the panel to the `Race` tab of `foxglove/dashboard_layout.json`
+- [ ] Document the new topics, nodes and `make` targets in this README and in
+      [ROS_CHEATSHEET.md](documentation/ROS_CHEATSHEET.md)
+
 ## Repo layout
 
 ```
@@ -108,6 +256,7 @@ FloatForwardROS2/
 ├── documentation/
 │   ├── SIMULATION.md          how the VRX simulation works
 │   └── ROS_CHEATSHEET.md      every topic, message type and node
+├── foxglove/                  dashboard_layout.json, the team's Foxglove layout
 ├── scripts/                   helper scripts run by the Makefile (apply_boat_params.py, apply_environment.py)
 └── boat/                      ROS 2 package (ament_python)
     ├── package.xml            dependencies + build type

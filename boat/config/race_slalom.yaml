@@ -1,0 +1,30 @@
+# Test slalom, loosely after the 2025 MEBC AI Slalom: a line of buoys 20-25 m apart, a special
+# last buoy to round, and the slalom again on the way back. The 2027 course is not published.
+# The course is placed in front of the boat, wherever it is when the race starts.
+
+/slalom_race:
+  ros__parameters:
+    # course (metres)
+    buoy_count: 4          # slalom buoys, not counting the end buoy
+    buoy_spacing: 22.0     # MEBC 2025: 20-25
+    first_buoy: 20.0       # from the boat to the first buoy
+    start_line: 8.0        # start and finish line, ahead of the boat
+    clearance: 4.0         # how far to the side of each buoy to steer
+    course_bearing_deg: 0.0  # turn the course left (+) or right (-) of the boat's heading
+    buoy_radius: 0.35      # estimated from photos, not measured
+
+    # driving
+    thrust: 1000.0         # N
+    lookahead: 6.0         # m, how far ahead on the path to aim
+    heading_gain: 1.2      # rad of engine angle per rad of heading error
+    yaw_rate_gain: 0.6     # rad of engine angle per rad/s, damps the turn
+    max_steer_deg: 40.0    # AI Class rule A_6: at least 40 degrees each side
+    start_delay: 3.0       # s of simulation time before the boat is released
+    sensor_timeout: 2.0    # s without GPS or IMU before the engine is stopped
+
+    # boat
+    gps_x: -0.85           # m, GPS position forward of the boat's centre
+    boat_length: 4.9       # m, for detecting buoy touches
+    boat_width: 2.4        # m
+
+    spawn_buoys: true      # put the buoys into Gazebo; false on a real boat

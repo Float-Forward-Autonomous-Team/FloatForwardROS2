@@ -27,6 +27,16 @@ setup(
     entry_points={
         "console_scripts": [
             "heartbeat = boat.heartbeat:main",
+            "obstacle_truth = boat.obstacle_truth:main",
+            "circle_driver = boat.circle_driver:main",
+            "gps_track = boat.gps_track:main",
+            "public_camera = boat.public_camera:main",
+            "slalom_race = boat.slalom_race:main",
+            "lidar_obstacles = boat.lidar_obstacles:main",
+            "water_segmentation = boat.water_segmentation:main",
+            "yolo_detector = boat.yolo_detector:main",
+            "combined_overlay = boat.combined_overlay:main",
+            "water_scan = boat.water_scan:main",
         ],
     },
 )
