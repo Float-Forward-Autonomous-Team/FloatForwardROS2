@@ -169,6 +169,36 @@ make track      # only the GPS track, as GeoJSON on /gps_track for a Map panel
 make race THRUST=800 STEER=0.2   # all of it, with a different circle
 ```
 
+**Test race (slalom).** A simple slalom to try the race view: the boat weaves through four buoys
+22 m apart, rounds a green end buoy and weaves back. It follows the known buoy positions on GPS
+and IMU. The perception nodes run next to it and show what they see; they do not steer.
+
+```bash
+make colcon           # first time only
+make perception-deps  # YOLO and water segmentation; again after every `make down`
+make vrx-race   # terminal 1: simulator with a front and a rear camera, and lighter sensors
+make slalom     # terminal 2, once the boat has spawned
+```
+
+Import `foxglove/slalom_layout.json` in Foxglove. It has three tabs: `Race`, `Detection` and
+`Rear detection` (needs `REAR_DETECTION=true`).
+
+| Node | Shows | Needs |
+|---|---|---|
+| `lidar_obstacles` | obstacle boxes on `/perception/obstacle_markers` | nothing extra |
+| `yolo_detector` | `/perception/yolo_overlay` | `models/buoys_best.pt` (from Jana) or `models/yolo26s.pt` |
+| `water_segmentation` | `/perception/water_mask`, `/perception/water_overlay` | `models/ewasr_resnet18_lars.onnx` (from Antonio) or `models/ewasr_resnet18.onnx` |
+| `combined_overlay` | detections and segmentation in one picture | the YOLO node |
+| `water_scan` | distances on `/perception/water_scan` | the segmentation node |
+
+The nodes come from branch `perception/first-nodes`. Model files are not in git. A camera node that
+cannot start is left out with a message. `make slalom PERCEPTION=false` runs without any of them;
+`REAR_DETECTION=true` adds YOLO on the rear camera. Stock YOLO does not know our buoys.
+
+Change the course in
+`boat/config/race_slalom.yaml`. The start delay, gate scoring and race time use simulation time.
+To race again, stop both with Ctrl+C and start again, so the boat is back on its start platform.
+
 **If something doesn't work:**
 
 - **`port is already allocated`:** another container is using port 6080 or 8765, often a second

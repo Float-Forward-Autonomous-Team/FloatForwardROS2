@@ -1,0 +1,409 @@
+{
+  "configById": {
+    "3D!slalom": {
+      "foxglovePanelTitle": "Slalom course",
+      "cameraState": {
+        "distance": 95,
+        "perspective": true,
+        "phi": 45,
+        "thetaOffset": 0,
+        "targetOffset": [
+          56,
+          0,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-none",
+      "followTf": "race_map",
+      "scene": {
+        "transforms": {
+          "showLabel": false,
+          "axisScale": 0.3
+        }
+      },
+      "transforms": {},
+      "topics": {
+        "/race/markers": {
+          "visible": true
+        },
+        "/perception/obstacle_markers": {
+          "visible": true
+        },
+        "/wamv/sensors/lidars/lidar_wamv_sensor/points": {
+          "visible": true,
+          "pointSize": 3,
+          "colorField": "intensity",
+          "colorMode": "flat",
+          "flatColor": "#00e5ff",
+          "decayTime": 0
+        }
+      },
+      "layers": {
+        "grid": {
+          "visible": true,
+          "layerId": "foxglove.Grid",
+          "label": "Grid",
+          "frameId": "race_map",
+          "size": 240,
+          "divisions": 24,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "order": 1,
+          "color": "#2f3b52"
+        },
+        "boat": {
+          "visible": true,
+          "layerId": "foxglove.Urdf",
+          "label": "Boat",
+          "sourceType": "topic",
+          "topic": "/wamv/robot_description",
+          "framePrefix": "wamv/",
+          "displayMode": "auto",
+          "order": 2
+        }
+      },
+      "publish": {}
+    },
+    "map!slalom": {
+      "foxglovePanelTitle": "Course on the map",
+      "center": {
+        "lat": -33.72228,
+        "lon": 150.67437
+      },
+      "zoomLevel": 17,
+      "layer": "map",
+      "followTopic": "",
+      "disabledTopics": [],
+      "topicColors": {}
+    },
+    "Image!front": {
+      "foxglovePanelTitle": "Front camera",
+      "imageMode": {
+        "imageTopic": "/wamv/sensors/cameras/front_camera_sensor/optical/image_raw"
+      },
+      "cameraState": {},
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {}
+    },
+    "Image!rear": {
+      "foxglovePanelTitle": "Rear camera",
+      "imageMode": {
+        "imageTopic": "/wamv/sensors/cameras/rear_camera_sensor/optical/image_raw"
+      },
+      "cameraState": {},
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {}
+    },
+    "Plot!race": {
+      "foxglovePanelTitle": "Speed (kn) and next gate (m)",
+      "showLegend": true,
+      "legendDisplay": "top",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 60,
+      "paths": [
+        {
+          "value": "/race/speed_kn.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "speed kn"
+        },
+        {
+          "value": "/race/next_gate_m.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "next gate m"
+        }
+      ],
+      "minYValue": 0
+    },
+    "Image!score": {
+      "foxglovePanelTitle": "Race",
+      "imageMode": {
+        "imageTopic": "/race/scoreboard"
+      },
+      "cameraState": {},
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {}
+    },
+    "Image!combined": {
+      "foxglovePanelTitle": "Front camera: segmentation + detections",
+      "imageMode": {
+        "imageTopic": "/perception/combined_overlay"
+      },
+      "cameraState": {},
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {}
+    },
+    "Image!water": {
+      "foxglovePanelTitle": "Water segmentation",
+      "imageMode": {
+        "imageTopic": "/perception/water_overlay"
+      },
+      "cameraState": {},
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {}
+    },
+    "Image!yolo": {
+      "foxglovePanelTitle": "Detections, front camera",
+      "imageMode": {
+        "imageTopic": "/perception/yolo_overlay"
+      },
+      "cameraState": {},
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {}
+    },
+    "Image!yolorear": {
+      "foxglovePanelTitle": "Detections, rear camera",
+      "imageMode": {
+        "imageTopic": "/perception/rear/yolo_overlay"
+      },
+      "cameraState": {},
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {}
+    },
+    "3D!lidar": {
+      "foxglovePanelTitle": "LiDAR obstacles (boxes) around the boat",
+      "cameraState": {
+        "distance": 45,
+        "perspective": true,
+        "phi": 50,
+        "thetaOffset": 90,
+        "targetOffset": [
+          6,
+          0,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "followTf": "wamv/wamv/base_link",
+      "scene": {
+        "transforms": {
+          "showLabel": false,
+          "axisScale": 0.3
+        }
+      },
+      "transforms": {},
+      "topics": {
+        "/race/markers": {
+          "visible": true
+        },
+        "/perception/obstacle_markers": {
+          "visible": true
+        },
+        "/wamv/sensors/lidars/lidar_wamv_sensor/points": {
+          "visible": true,
+          "pointSize": 3,
+          "colorField": "intensity",
+          "colorMode": "flat",
+          "flatColor": "#00e5ff",
+          "decayTime": 0
+        },
+        "/perception/water_scan": {
+          "visible": true,
+          "pointSize": 6,
+          "colorField": "range",
+          "colorMode": "flat",
+          "flatColor": "#ff9d2e"
+        }
+      },
+      "layers": {
+        "grid": {
+          "visible": true,
+          "layerId": "foxglove.Grid",
+          "label": "Grid",
+          "frameId": "race_map",
+          "size": 240,
+          "divisions": 24,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "order": 1,
+          "color": "#2f3b52"
+        },
+        "boat": {
+          "visible": true,
+          "layerId": "foxglove.Urdf",
+          "label": "Boat",
+          "sourceType": "topic",
+          "topic": "/wamv/robot_description",
+          "framePrefix": "wamv/",
+          "displayMode": "auto",
+          "order": 2
+        }
+      },
+      "publish": {}
+    },
+    "Tab!slalom": {
+      "activeTabIdx": 0,
+      "tabs": [
+        {
+          "title": "Race",
+          "layout": {
+            "first": "Image!score",
+            "second": {
+              "first": {
+                "first": "3D!slalom",
+                "second": {
+                  "first": "Image!front",
+                  "second": "Image!rear",
+                  "direction": "row",
+                  "splitPercentage": 50
+                },
+                "direction": "column",
+                "splitPercentage": 48
+              },
+              "second": {
+                "first": "map!slalom",
+                "second": "Plot!race",
+                "direction": "column",
+                "splitPercentage": 58
+              },
+              "direction": "row",
+              "splitPercentage": 68
+            },
+            "direction": "column",
+            "splitPercentage": 19
+          }
+        },
+        {
+          "title": "Detection",
+          "layout": {
+            "first": {
+              "first": "Image!combined",
+              "second": {
+                "first": "Image!water",
+                "second": "Image!yolo",
+                "direction": "row",
+                "splitPercentage": 50
+              },
+              "direction": "column",
+              "splitPercentage": 58
+            },
+            "second": {
+              "first": "3D!lidar",
+              "second": "Image!rear2",
+              "direction": "column",
+              "splitPercentage": 52
+            },
+            "direction": "row",
+            "splitPercentage": 55
+          }
+        },
+        {
+          "title": "Rear detection",
+          "layout": {
+            "first": "Image!rear3",
+            "second": "Image!yolorear",
+            "direction": "row",
+            "splitPercentage": 50
+          }
+        }
+      ]
+    },
+    "Image!rear2": {
+      "foxglovePanelTitle": "Rear camera",
+      "imageMode": {
+        "imageTopic": "/wamv/sensors/cameras/rear_camera_sensor/optical/image_raw"
+      },
+      "cameraState": {},
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {}
+    },
+    "Image!rear3": {
+      "foxglovePanelTitle": "Rear camera",
+      "imageMode": {
+        "imageTopic": "/wamv/sensors/cameras/rear_camera_sensor/optical/image_raw"
+      },
+      "cameraState": {},
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {}
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": "Tab!slalom"
+}

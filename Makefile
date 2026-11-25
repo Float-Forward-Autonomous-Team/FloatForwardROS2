@@ -1,4 +1,4 @@
-.PHONY: build up sh colcon vrx foxglove obstacles circles track race live publish tunnel record replay-data down clean
+.PHONY: build up sh colcon vrx foxglove obstacles circles track race vrx-race slalom perception-deps live publish tunnel record replay-data down clean
 
 WORLD ?= stationkeeping_task
 HEADLESS ?= False
@@ -64,6 +64,22 @@ circles: up  ## drive the boat in circles (run alongside `make vrx`); override w
 # replaces running `make foxglove`, `make circles`, `make track` and `make obstacles` separately.
 race: up  ## run a race stage with the Foxglove dashboard (start `make vrx` first); override with THRUST=<N>/STEER=<rad>
 	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 launch boat race.launch.py thrust:=$(THRUST) steer:=$(STEER)"
+
+# the simulator for `make slalom`: two cameras (front and rear) and lighter sensors, so it runs faster
+vrx-race: ## launch the simulator for a test race; use this instead of `make vrx`
+	$(MAKE) vrx WORLD=sydney_regatta SENSOR_YAML=/ws/src/boat/boat/config/wamv_two_cameras.yaml \
+		BOAT_PARAMS=/ws/src/boat/boat/config/boat_params_light.yaml
+
+COURSE ?= /ws/src/boat/boat/config/race_slalom.yaml
+
+PERCEPTION ?= true
+REAR_DETECTION ?= false
+
+slalom: up  ## drive one test slalom and show it in Foxglove (start `make vrx-race` first); override with COURSE=<path>/PERCEPTION=false/REAR_DETECTION=true
+	docker compose exec ros bash -lc "$(ROS_ENV) && ros2 launch boat slalom.launch.py course:=$(COURSE) perception:=$(PERCEPTION) rear_detection:=$(REAR_DETECTION)"
+
+perception-deps: up  ## install what YOLO and the water segmentation need; again after every `make down`
+	docker compose exec ros bash -lc "$(ROS_ENV) && bash /ws/src/boat/models/install_deps.sh"
 
 # runs on the Mac, not in the container: the public live page prototype, a static page that reads foxglove_bridge directly
 live:    ## serve the public live page on http://localhost:8090 (AI tab needs `make race`)
