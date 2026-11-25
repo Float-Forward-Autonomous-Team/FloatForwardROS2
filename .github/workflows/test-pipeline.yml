@@ -22,6 +22,8 @@ jobs:
       - run: docker compose build
       - run: |
           docker compose run --rm ros bash -lc "
+            source /opt/ros/jazzy/setup.bash &&
+            sudo apt-get update &&
             rosdep install --from-paths src --ignore-src -r -y &&
             colcon build --symlink-install --merge-install
           "
