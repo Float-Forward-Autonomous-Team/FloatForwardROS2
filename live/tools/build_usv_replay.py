@@ -150,7 +150,7 @@ def main(bag, out_dir):
         sys.exit("No public topics in this recording; was `make race` running?")
     duration = max(m[0] for m in messages)
     replay = {"duration": r(duration, 2), "messages": messages, "frames": frames}
-    (out_dir / "replay.json").write_text(json.dumps(replay, separators=(",", ":")))
+    (out_dir / "replay.json").write_text(json.dumps(replay, separators=(",", ":")) + "\n")
 
     size = sum(f.stat().st_size for f in out_dir.rglob("*") if f.is_file())
     counts = ", ".join(f"{name}: {len(f)} frames" for name, f in frames.items()) or "no camera"

@@ -1,6 +1,9 @@
-# Turns the eWaSR PyTorch weights into one ONNX file that the ROS node can run.
-# Run once, inside the export venv (see the perception setup notes), from this folder:
-#   python export_ewasr.py
+"""Turn the eWaSR PyTorch weights into one ONNX file that the ROS node can run.
+
+Run once, inside the export venv (see the perception setup notes), from this folder:
+    python export_ewasr.py
+"""
+
 import sys
 import types
 
@@ -25,7 +28,10 @@ original_resize = TF.resize
 
 
 def resize(img, size, interpolation=TF.InterpolationMode.BILINEAR, max_size=None, antialias=None):
-    return original_resize(img, size, interpolation, max_size, antialias=False)  # ONNX cannot do antialias
+    """Resize without antialiasing, which ONNX cannot do."""
+    return original_resize(
+        img, size, interpolation, max_size, antialias=False
+    )  # ONNX cannot do antialias
 
 
 TF.resize = resize
@@ -39,11 +45,15 @@ model.eval()
 
 
 class OnlyImage(torch.nn.Module):
+    """Wrap the model so that it takes only the image."""
+
     def __init__(self, m):
+        """Keep the wrapped model."""
         super().__init__()
         self.m = m
 
     def forward(self, image):
+        """Return the class scores, with an empty IMU mask."""
         no_imu = torch.zeros(image.shape[0], image.shape[2], image.shape[3])
         return self.m({"image": image, "imu_mask": no_imu})["out"]
 

@@ -1,3 +1,5 @@
+"""Find obstacles in the LiDAR point cloud and publish them as markers."""
+
 import math
 
 import numpy as np
@@ -14,6 +16,7 @@ class LidarObstacles(Node):
     """Finds obstacles (buoys, boats, docks) in the WAM-V LiDAR point cloud."""
 
     def __init__(self):
+        """Read the parameters and create the subscriptions and publishers."""
         super().__init__("lidar_obstacles")
         self.declare_parameter("cloud_topic", "/wamv/sensors/lidars/lidar_wamv_sensor/points")
         self.declare_parameter("min_range", 3.0)  # m, ignore our own boat
@@ -23,11 +26,14 @@ class LidarObstacles(Node):
         self.declare_parameter("min_points", 3)  # fewer points = noise
 
         topic = self.get_parameter("cloud_topic").value
-        self.sub = self.create_subscription(PointCloud2, topic, self.on_cloud, qos_profile_sensor_data)
+        self.sub = self.create_subscription(
+            PointCloud2, topic, self.on_cloud, qos_profile_sensor_data
+        )
         self.pub = self.create_publisher(MarkerArray, "/perception/obstacle_markers", 10)
         self.get_logger().info(f"Listening to {topic}")
 
     def on_cloud(self, msg):
+        """Group the points of one scan into objects and publish them."""
         # 1. point cloud -> N x 3 array of x, y, z (metres, in the LiDAR frame)
         pts = point_cloud2.read_points_numpy(msg, field_names=("x", "y", "z"), skip_nans=True)
         if len(pts) == 0:
@@ -90,6 +96,7 @@ class LidarObstacles(Node):
 
     @staticmethod
     def make_markers(objects, header):
+        """Return one box and one distance label per object."""
         markers = MarkerArray()
         clear = Marker()
         clear.header = header
@@ -120,6 +127,7 @@ class LidarObstacles(Node):
 
 
 def main():
+    """Start the LiDAR obstacle node and spin until interrupted."""
     rclpy.init()
     node = LidarObstacles()
     try:

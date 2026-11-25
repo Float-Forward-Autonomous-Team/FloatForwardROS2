@@ -1,3 +1,5 @@
+"""Detect objects in the camera image with YOLO and draw them."""
+
 import time
 
 import numpy as np
@@ -13,8 +15,11 @@ class YoloDetector(Node):
     """Runs YOLO26-s on the WAM-V camera: what the objects are and where they are in the image."""
 
     def __init__(self):
+        """Read the parameters, load the model and create the publisher."""
         super().__init__("yolo_detector")
-        self.declare_parameter("image_topic", "/wamv/sensors/cameras/front_left_camera_sensor/image_raw")
+        self.declare_parameter(
+            "image_topic", "/wamv/sensors/cameras/front_left_camera_sensor/image_raw"
+        )
         self.declare_parameter("model_path", "/ws/src/boat/models/yolo26s.pt")
         self.declare_parameter("confidence", 0.3)
         self.declare_parameter("seconds_between_frames", 0.5)
@@ -24,9 +29,12 @@ class YoloDetector(Node):
         self.sub = self.create_subscription(Image, topic, self.on_image, qos_profile_sensor_data)
         self.pub = self.create_publisher(Image, "/perception/yolo_overlay", 10)
         self.last = 0.0
-        self.get_logger().info(f"YOLO loaded ({len(self.model.names)} classes), listening to {topic}")
+        self.get_logger().info(
+            f"YOLO loaded ({len(self.model.names)} classes), listening to {topic}"
+        )
 
     def on_image(self, msg):
+        """Detect the objects in one camera image and publish the drawn boxes."""
         if time.time() - self.last < self.get_parameter("seconds_between_frames").value:
             return
         self.last = time.time()
@@ -43,7 +51,9 @@ class YoloDetector(Node):
 
         # 2. run the detector
         start = time.time()
-        result = self.model.predict(img, conf=self.get_parameter("confidence").value, verbose=False)[0]
+        result = self.model.predict(
+            img, conf=self.get_parameter("confidence").value, verbose=False
+        )[0]
         ms = (time.time() - start) * 1000
 
         # 3. report each detection: class, confidence, box centre in pixels
@@ -51,7 +61,9 @@ class YoloDetector(Node):
         for box in result.boxes:
             name = self.model.names[int(box.cls[0])]
             x1, y1, x2, y2 = box.xyxy[0].tolist()
-            found.append(f"{name} {float(box.conf[0]):.2f} at x={int((x1 + x2) / 2)} y={int((y1 + y2) / 2)}")
+            found.append(
+                f"{name} {float(box.conf[0]):.2f} at x={int((x1 + x2) / 2)} y={int((y1 + y2) / 2)}"
+            )
         self.get_logger().info(f"{len(found)} detections: {', '.join(found)}  ({ms:.0f} ms)")
 
         # 4. publish the image with the boxes drawn on it
@@ -66,6 +78,7 @@ class YoloDetector(Node):
 
 
 def main():
+    """Start the detector node and spin until interrupted."""
     rclpy.init()
     node = YoloDetector()
     try:

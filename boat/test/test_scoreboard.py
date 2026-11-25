@@ -17,7 +17,9 @@ VALUES = {
 }
 
 
-@pytest.mark.parametrize("state", ["WAITING", "RACING: next buoy 4 back", "STOPPED: no GPS or IMU"])
+@pytest.mark.parametrize(
+    "state", ["WAITING", "RACING: next buoy 4 back", "STOPPED: no GPS or IMU"]
+)
 def test_draws_every_state(state):
     """Every state gives a readable JPEG of the right size."""
     image = Image.open(BytesIO(draw_scoreboard(state, VALUES, 10)))

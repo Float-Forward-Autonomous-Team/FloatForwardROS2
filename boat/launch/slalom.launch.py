@@ -69,9 +69,7 @@ def perception(context):
 
     if arg("perception").lower() != "true":
         return []
-    config = os.path.join(
-        get_package_share_directory("boat"), "config", "perception_slalom.yaml"
-    )
+    config = os.path.join(get_package_share_directory("boat"), "config", "perception_slalom.yaml")
     actions = [
         Node(
             package="boat",
