@@ -4,17 +4,30 @@ import math
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from builtin_interfaces.msg import Time
 from visualization_msgs.msg import Marker
 
-from boat.navigation.planning.local_spline_guidance import _build_path_visualization
+from boat.navigation.planning.dynamic_window import VelocityLimits, compute_dynamic_window
 from boat.navigation.planning.grid_astar import astar, cell_center, step_costs, world_to_cell
+from boat.navigation.planning.local_spline_guidance import _build_path_visualization
 from boat.navigation.planning.path_geometry import distance_to_polyline
 from boat.navigation.planning.path_smoothing import generate_safe_spline, line_of_sight_target
 from boat.navigation.simulation.obstacle_trajectory import MovingObstacle
 from boat.navigation.simulation.scenario_map import ScenarioMap
 from boat.navigation.world_model.layers import clearance_cells, paint_circle, passable_cells
 from boat.navigation.world_model.objects import StationaryFilter, predict
+
+# Approximate limits observed in Gazebo, not validated hardware limits.
+SIMULATION_VELOCITY_LIMITS = VelocityLimits(
+    min_speed=-2.27,
+    max_speed=3.65,
+    min_yaw_rate=-1.59,
+    max_yaw_rate=1.59,
+    max_acceleration=6.1,
+    max_deceleration=6.5,
+    max_yaw_acceleration=6.9,
+)
 
 
 def costs_for(data, width, height, radius=0.0, **kwargs):
@@ -38,6 +51,33 @@ def test_waypoint_trajectory_loops_with_expected_velocity():
     obstacle = MovingObstacle("probe", "test", 1.0, 1.0, ((0.0, 0.0), (10.0, 0.0)))
     assert obstacle.position_velocity(5.0) == (5.0, 0.0, 1.0, 0.0)
     assert obstacle.position_velocity(15.0) == (5.0, 0.0, -1.0, 0.0)
+
+
+def test_dynamic_window_intersects_physical_and_reachable_velocity_limits():
+    window = compute_dynamic_window(1.0, 0.1, 0.1, SIMULATION_VELOCITY_LIMITS)
+
+    assert math.isclose(window.min_speed, 0.35)
+    assert math.isclose(window.max_speed, 1.61)
+    assert math.isclose(window.min_yaw_rate, -0.59)
+    assert math.isclose(window.max_yaw_rate, 0.79)
+
+
+def test_dynamic_window_samples_include_reachable_endpoints():
+    window = compute_dynamic_window(1.0, 0.1, 0.1, SIMULATION_VELOCITY_LIMITS)
+
+    candidates = window.sample(2, 2)
+
+    np.testing.assert_allclose(
+        candidates,
+        [(0.35, -0.59), (0.35, 0.79), (1.61, -0.59), (1.61, 0.79)],
+    )
+
+
+def test_dynamic_window_rejects_invalid_timestep_or_empty_intersection():
+    with pytest.raises(ValueError, match="timestep must be positive"):
+        compute_dynamic_window(1.0, 0.0, 0.0, SIMULATION_VELOCITY_LIMITS)
+    with pytest.raises(ValueError, match="window is empty"):
+        compute_dynamic_window(10.0, 0.0, 0.5, SIMULATION_VELOCITY_LIMITS)
 
 
 def test_map_uses_collision_geometry_ros_row_order_and_records_landmarks(tmp_path):
